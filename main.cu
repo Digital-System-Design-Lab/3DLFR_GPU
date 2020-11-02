@@ -1,4 +1,4 @@
-#include "LFUtils.cuh"
+癤�#include "LFUtils.cuh"
 #include <thread> // std::thread
 #include <future> // std::future
 #include <mutex>
@@ -26,41 +26,31 @@ __device__ int dev_query_hashmap(const int& lf, const int& img, const int& slice
 	return lf * (g_width / g_slice_width) * g_length + img * (g_width / g_slice_width) + slice;
 }
 
-__global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap, int posX, int posY, int g_width, int g_height, int g_slice_width, float fov = 90.0f, float times = 270.0f)
+__global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** d_hashmap_even, int mode, int posX, int posY, int g_width, int g_height, int g_slice_width, float fov = 90.0f, float times = 270.0f)
 {
 	int tw = blockIdx.x * blockDim.x + threadIdx.x; // blockIdx.x = (int)[0, (out_w - 1)]
 	int th = blockIdx.y * blockDim.y + threadIdx.y; // threadIdx = (int)[0, (g_height - 1)]
 
-	////// NO DEPENDANCIES
 	int LFUW = 100;
-
-	// float z0 = 1 + 0.25f * (posY - 1); // 0.25 간격
-	// float x0 = 1 + 0.25f * (posX - 1);
-	int z0 = posY; // 1 간격
-	int x0 = posX; // projection 
+	int z0 = posY; 
+	int x0 = posX; 
 
 	float theta_L = -fov / 2.0;
 	float theta_R = fov / 2.0;
 
-	////// DEPENDANCIES 1
-	float theta_P = theta_L + (0.04 * (float)tw); // 가져올 ray가 front와 이루는 각 (rad)
+	float theta_P = theta_L + (0.04 * (float)tw);
 	int Y = LFUW / 2;
 	float b = sqrt(2.0) * LFUW;
-	// int left_end = x0 - z0 * __tanf(dev_deg2rad(fov / 2)); // Eq.1
-	// int right_end = x0 + z0 * __tanf(dev_deg2rad(fov / 2)); // Eq.2
-	float xP = x0 + z0 * __tanf(dev_deg2rad(theta_P)); // 구간 내에서 odd func
-	////// DEPENDANCIES 2
+	float xP = x0 + z0 * __tanf(dev_deg2rad(theta_P)); 
 
-	float N_dist = sqrt((float)((xP - x0) * (xP - x0) + (Y - z0) * (Y - z0))) / b; // 1D 일 경우 이 부분도 수정해야 할 것 같은데
+	float N_dist = sqrt((float)((xP - x0) * (xP - x0) + (Y - z0) * (Y - z0))) / b; 
 	int P_1 = (int)(roundf(xP));
 	float U = (theta_P / (fov / 2.0)) * WIDTH / 2 + WIDTH / 2;
-	////// DEPENDANCIES 3
-	// P_1 = dev_Clamp(P_1, 0, LENGTH - 1); // LFU 구조이면 P_1이 LF rig 폭보다 클 때 clamp를 하지만, 1D-array의 경우 그 옆에 있는 LF에서 이미지를 가져와야 함
 
 	int U_1 = (int)(roundf(U));
 	int U_1_n = 0;
 	int N_off = (int)(roundf(times * N_dist + 0.5)) >> 1;
-	////// DEPENDANCIES 4
+	
 	U_1 %= WIDTH;
 	U_1 = dev_Clamp(U_1, 0, WIDTH - 1);
 
@@ -68,53 +58,44 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap, int posX, int 
 	int image_num = P_1 % LENGTH;
 	int slice_num = U_1 / g_slice_width;
 	int pixel_col = U_1 % g_slice_width;
-	////// DEPENDANCIES 5
+	
 	float N_H_r = (float)(HEIGHT + N_off) / HEIGHT;
-	////// DEPENDANCIES 6
+	
 	float h_n = (th - HEIGHT / 2) * N_H_r + HEIGHT / 2;
 
 	if (h_n < 0)
-	{
-		// U_1_n = U_1 + WIDTH / 2;
-		// if (U_1_n > WIDTH - 1) 
-		// 	U_1_n = U_1 - WIDTH / 2;
-
 		h_n = (-1 * h_n) - 1;
-	}
 	else if (h_n > HEIGHT - 1)
-	{
-		// U_1_n = U_1 + WIDTH / 2;
-		// if (U_1_n > WIDTH - 1) 
-		// 	U_1_n = U_1 - WIDTH / 2;
-
 		h_n = HEIGHT - ((h_n - HEIGHT) - 1);
-	}
-	// else
-	// {
-	// 	U_1_n = U_1;
-	// }
 
 	int H_1 = (int)(roundf(h_n));
 	H_1 = dev_Clamp(H_1, 0, HEIGHT - 1);
 	float H_r = h_n - H_1;
 
-	int thisSlice = dev_query_hashmap(LF_num, image_num, slice_num); // Random access to hashmap
-	uint8_t pel_ch0 = d_hashmap[thisSlice][pixel_col * g_height * 3 + H_1 * 3 + 0]; // Random access to pixel column
-	uint8_t pel_ch1 = d_hashmap[thisSlice][pixel_col * g_height * 3 + H_1 * 3 + 1]; // Random access to pixel column
-	uint8_t pel_ch2 = d_hashmap[thisSlice][pixel_col * g_height * 3 + H_1 * 3 + 2]; // Random access to pixel column
+	int slice = dev_query_hashmap(LF_num, image_num, slice_num); // Random access to hashmap
+	uint8_t oddpel_ch0 = d_hashmap_odd[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 0]; // Random access to pixel column
+	uint8_t oddpel_ch1 = d_hashmap_odd[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 1]; // Random access to pixel column
+	uint8_t oddpel_ch2 = d_hashmap_odd[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 2]; // Random access to pixel column
+	outImage[(2 * th) * (OUTPUT_WIDTH * 3) + tw * 3 + 0] = oddpel_ch0; // b 
+	outImage[(2 * th) * (OUTPUT_WIDTH * 3) + tw * 3 + 1] = oddpel_ch1; // g 
+	outImage[(2 * th) * (OUTPUT_WIDTH * 3) + tw * 3 + 2] = oddpel_ch2; // r 
 
-	// int location = dev_find_pixel_location(image_num, U_1, H_1, g_width, g_height, g_slice_width); // device memory에서 image num과 slice num으로 slice를 특정할수 있어야함
-	// uint8_t pel_ch0 = slices[location + 0];
-	// uint8_t pel_ch1 = slices[location + 1];
-	// uint8_t pel_ch2 = slices[location + 2]; // slice buffer에서 덮어쓰기 발생
+	if (mode == 1) {
+		uint8_t evenpel_ch0 = d_hashmap_even[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 0]; // Random access to pixel column
+		uint8_t evenpel_ch1 = d_hashmap_even[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 1]; // Random access to pixel column
+		uint8_t evenpel_ch2 = d_hashmap_even[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 2]; // Random access to pixel column
 
-	// h_outImage[(w) * (1024 * 3) + h * 3 + 2] = pel_ch0; // r  // 세로
-	// h_outImage[(w) * (1024 * 3) + h * 3 + 1] = pel_ch1; // g  // 세로
-	// h_outImage[(w) * (1024 * 3) + h * 3 + 0] = pel_ch2; // b  // 세로
+		outImage[(2 * th + 1) * (OUTPUT_WIDTH * 3) + tw * 3 + 0] = evenpel_ch0; // b 
+		outImage[(2 * th + 1) * (OUTPUT_WIDTH * 3) + tw * 3 + 1] = evenpel_ch1; // g 
+		outImage[(2 * th + 1) * (OUTPUT_WIDTH * 3) + tw * 3 + 2] = evenpel_ch2; // r 
+	}
+	else
+	{
+		outImage[(2 * th + 1) * (OUTPUT_WIDTH * 3) + tw * 3 + 0] = oddpel_ch0; // b 
+		outImage[(2 * th + 1) * (OUTPUT_WIDTH * 3) + tw * 3 + 1] = oddpel_ch1; // g 
+		outImage[(2 * th + 1) * (OUTPUT_WIDTH * 3) + tw * 3 + 2] = oddpel_ch2; // r 
+	}
 
-	outImage[(th) * (OUTPUT_WIDTH * 3) + tw * 3 + 0] = pel_ch0; // b // 가로
-	outImage[(th) * (OUTPUT_WIDTH * 3) + tw * 3 + 1] = pel_ch1; // g // 가로
-	outImage[(th) * (OUTPUT_WIDTH * 3) + tw * 3 + 2] = pel_ch2; // r // 가로
 }
 
 uint8_t* alloc_uint8(int size, std::string alloc_type) {
@@ -155,9 +136,9 @@ void free_uint8(uint8_t* buf, std::string alloc_type) {
 
 int read_uint8(uint8_t* buf, std::string filename, int size = -1)
 {
-	int fd; 
+	int fd;
 	int ret;
-	
+
 	fd = open(filename.c_str(), O_RDONLY | O_BINARY);
 	ret = fd;
 	if (ret < 0) {
@@ -185,7 +166,7 @@ int read_uint8(uint8_t* buf, std::string filename, int size = -1)
 		}
 	}
 
-	ret = read(fd, buf, sizeof(uint8_t) * size); // x86일때 크기 표현 오류남 -> x64로 돌려야함
+	ret = read(fd, buf, sizeof(uint8_t) * size); // x64
 	close(fd);
 
 	if (ret != size) {
@@ -193,7 +174,7 @@ int read_uint8(uint8_t* buf, std::string filename, int size = -1)
 		assert(ret == size);
 		exit(1);
 	}
-	
+
 	return ret;
 }
 
@@ -203,15 +184,10 @@ int write_uint8(uint8_t* buf, std::string filename, int size = -1)
 	if ((fd = open(filename.c_str(), O_WRONLY | O_BINARY)) < 0) return fd;
 	if (size < 0) size = _msize(buf);
 
-	int ret = write(fd, buf, sizeof(uint8_t) * size); // x86일때 크기 표현 오류남 -> x64로 돌려야함
+	int ret = write(fd, buf, sizeof(uint8_t) * size); // x64 
 	close(fd);
 
 	return ret;
-}
-
-int find_slice_from_LF(const int& img, const int& slice)
-{
-	return img * g_width * g_height * 3 + slice * g_slice_width * g_height * 3;
 }
 
 void set_slice_map() {
@@ -258,9 +234,10 @@ std::pair<size_t, size_t> cache_slice(LRUCache& LRU, std::vector<Interlaced_LF>&
 
 	int leftend_image, rightend_image;
 	set_both_end_image(leftend_image, rightend_image, posX, posY);
-	
+
 	int img = leftend_image;
-	for (std::vector<std::pair<int, int>>::iterator image_iter = slice_map[posY].begin(); image_iter != slice_map[posY].end(); image_iter++) // slice에 접근
+
+	for (std::vector<std::pair<int, int>>::iterator image_iter = slice_map[posY].begin(); image_iter != slice_map[posY].end(); image_iter++) 
 	{
 		SliceID id;
 		for (int slice_num = image_iter->first; slice_num <= image_iter->second; slice_num++) {
@@ -268,16 +245,23 @@ std::pair<size_t, size_t> cache_slice(LRUCache& LRU, std::vector<Interlaced_LF>&
 			id.image_number = img % g_length;
 			id.slice_number = slice_num;
 
-			int slice_location = find_slice_from_LF(id.image_number, id.slice_number);
-
+			int slice_location = find_slice_from_LF(id.image_number, id.slice_number, true);
+			// uint8_t* data;
 			Interlaced_LF* LF = get_LF_from_Window(window, id.lf_number);
 
-			if (LF->progress < LF_READ_PROGRESS_PREPARED) {
-			LRU.enqueue_wait_slice(id, LF->full_field + slice_location);
+			if (LF->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED) { 
+				LRU.enqueue_wait_slice(id, LF->odd_field + slice_location, ODD);
+				LRU.enqueue_wait_slice(id, LF->even_field + slice_location, EVEN);
 			}
-			else {
-			hit += LRU.put(id, LF->full_field + slice_location);
+			else if (LF->progress == LF_READ_PROGRESS_ODD_FIELD_PREPARED) { 
+				LRU.put(id, LF->odd_field + slice_location, ODD);
+				LRU.enqueue_wait_slice(id, LF->even_field + slice_location, EVEN);
 			}
+			else { 
+				LRU.put(id, LF->odd_field + slice_location, ODD);
+				LRU.put(id, LF->even_field + slice_location, EVEN);
+			}
+
 			try_caching++;
 		}
 		img++;
@@ -285,16 +269,16 @@ std::pair<size_t, size_t> cache_slice(LRUCache& LRU, std::vector<Interlaced_LF>&
 	return std::make_pair(hit, try_caching);
 }
 
-int cache_slice_in_background(LRUCache& LRU, std::vector<Interlaced_LF>& window, std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, H2D_THREAD_STATE& h2d_thread_state, MAIN_THREAD_STATE& main_thread_state) {
+int cache_slice_in_background(LRUCache& LRU, std::vector<Interlaced_LF>& window, std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, H2D_THREAD_STATE& thread_state_h2d, const MAIN_THREAD_STATE& thread_state_main) {
 
 	int i = 0;
 	int s = 0;
-	while(1)
+	while (1)
 	{
-		while(1){
+		while (1) {
 			for (int p = 0; p < 8; p++) {
-				if (main_thread_state < MAIN_THREAD_RENDERING) {
-					h2d_thread_state = H2D_THREAD_INTERRUPTED;
+				if (thread_state_main < MAIN_THREAD_RENDERING) {
+					thread_state_h2d = H2D_THREAD_INTERRUPTED;
 					return -1;
 				} // interrupted
 
@@ -305,10 +289,10 @@ int cache_slice_in_background(LRUCache& LRU, std::vector<Interlaced_LF>& window,
 				set_both_end_image(leftend_image, rightend_image, posX_at_p, posY_at_p);
 
 				int img = leftend_image + i;
-				std::pair<int, int> slice_range = slice_map[posY_at_p].at(i); // i번째 이미지의 slice 범위
-				int slice_num = slice_range.first + s; // 범위 안의 특정 슬라이스
-				
-				if (i < slice_map[posY_at_p].size() && slice_num <= slice_range.second) // image와 slice 탐색 범위를 벗어나지 않으면
+				std::pair<int, int> slice_range = slice_map[posY_at_p].at(i); 
+				int slice_num = slice_range.first + s; 
+
+				if (i < slice_map[posY_at_p].size() && slice_num <= slice_range.second) 
 				{
 					SliceID id;
 
@@ -316,11 +300,15 @@ int cache_slice_in_background(LRUCache& LRU, std::vector<Interlaced_LF>& window,
 					id.image_number = img % g_length;
 					id.slice_number = slice_num;
 
-					int slice_location = find_slice_from_LF(id.image_number, id.slice_number);
+					int slice_location = find_slice_from_LF(id.image_number, id.slice_number, true);
 					Interlaced_LF* LF = get_LF_from_Window(window, id.lf_number);
 
-					if (LF->progress == LF_READ_PROGRESS_PREPARED) {
-						LRU.put(id, LF->full_field + slice_location, stream_h2d, h2d_thread_state);
+					if (LF->progress == LF_READ_PROGRESS_ODD_FIELD_PREPARED) {
+						LRU.put(id, LF->odd_field + slice_location, stream_h2d, thread_state_h2d, ODD);
+					}
+					if (LF->progress == LF_READ_PROGRESS_EVEN_FIELD_PREPARED) {
+						LRU.put(id, LF->odd_field + slice_location, stream_h2d, thread_state_h2d, ODD);
+						LRU.put(id, LF->even_field + slice_location, stream_h2d, thread_state_h2d, EVEN);
 					}
 				}
 			}
@@ -335,94 +323,53 @@ int cache_slice_in_background(LRUCache& LRU, std::vector<Interlaced_LF>& window,
 	}
 }
 
-int gigaray_cache_slice_in_background(LRUCache& LRU, std::vector<Interlaced_LF>& window, std::vector<std::pair<double, std::pair<int, int>>> predpos_deadreckoning, cudaStream_t stream_h2d, H2D_THREAD_STATE& h2d_thread_state, MAIN_THREAD_STATE& main_thread_state) {
-	for (int i = 0; i < predpos_deadreckoning.size(); i++)
-	{
-		double weight = predpos_deadreckoning.at(i).first;
-		int posX = predpos_deadreckoning.at(i).second.first;
-		int posY = predpos_deadreckoning.at(i).second.second;
-
-		int leftend_image, rightend_image;
-		set_both_end_image(leftend_image, rightend_image, posX, posY);
-
-		int img = leftend_image;
-		for (std::vector<std::pair<int, int>>::iterator image_iter = slice_map[posY].begin(); image_iter != slice_map[posY].end(); image_iter++) // slice에 접근
-		{
-			SliceID id;
-			for (int slice_num = image_iter->first; slice_num <= image_iter->second; slice_num++) {
-				if (main_thread_state < MAIN_THREAD_RENDERING) {
-					h2d_thread_state = H2D_THREAD_INTERRUPTED;
-					return -1;
-				} // interrupted
-
-				id.lf_number = img / g_length;
-				id.image_number = img % g_length;
-				id.slice_number = slice_num;
-
-				int slice_location = find_slice_from_LF(id.image_number, id.slice_number);
-				Interlaced_LF* LF = get_LF_from_Window(window, id.lf_number);
-
-				if (LF->progress == LF_READ_PROGRESS_PREPARED) {
-					LRU.put(id, LF->full_field + slice_location, stream_h2d, h2d_thread_state);
-				}
-			}
-			img++;
-		}
-	}
-}
-
-void loop_nbrs_h2d(LRUCache& LRU, std::vector<Interlaced_LF>& window, std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, H2D_THREAD_STATE& h2d_thread_state, MAIN_THREAD_STATE& main_thread_state, std::mutex& mtx)
+void loop_nbrs_h2d(LRUCache& LRU, std::vector<Interlaced_LF>& window, std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, H2D_THREAD_STATE& thread_state_h2d, const MAIN_THREAD_STATE& thread_state_main, std::mutex& mtx)
 {
 	bool loop = true;
 	while (loop) {
 		mtx.lock();
-		cache_slice_in_background(LRU, window, nbrPosition, stream_h2d, h2d_thread_state, main_thread_state);
+		cache_slice_in_background(LRU, window, nbrPosition, stream_h2d, thread_state_h2d, thread_state_main);
 		mtx.unlock();
-		if (main_thread_state == MAIN_THREAD_TERMINATED) loop = false;
-	}
-}
-
-void gigaray_loop_nbrs_h2d(LRUCache& LRU, std::vector<Interlaced_LF>& window, int& prevprevPosX, int& prevprevPosY, int& prevPosX, int& prevPosY, int& curPosX, int& curPosY, cudaStream_t stream_h2d, H2D_THREAD_STATE& h2d_thread_state, MAIN_THREAD_STATE& main_thread_state, std::mutex& mtx)
-{
-	bool loop = true;
-	while (loop) {
-		std::vector<std::pair<double, std::pair<int, int>>> predpos_deadreckoning = doDeadReckoning(prevprevPosX, prevprevPosY, prevPosX, prevPosY, curPosX, curPosY, 120.0, 8);
-		mtx.lock();
-		gigaray_cache_slice_in_background(LRU, window, predpos_deadreckoning, stream_h2d, h2d_thread_state, main_thread_state);
-		mtx.unlock();
-		if (main_thread_state == MAIN_THREAD_TERMINATED) loop = false;
+		if (thread_state_main == MAIN_THREAD_TERMINATED) loop = false;
 	}
 }
 
 void update_LF_window(std::vector<Interlaced_LF>& window, int& current_LF_number, const int& curPosX, READ_DISK_THREAD_STATE& read_disk_thread_state)
 {
 	StopWatch sw_read;
-	int assumed_read_time_for_field = 6000;
+	int assumed_read_time_for_field = 3000;
 
-	std::string prefix = g_directory + "Full/Column";
+	std::string prefix = g_directory + "Interlaced/Column";
 
 	current_LF_number = curPosX / g_length;
 	Interlaced_LF* curLF = get_LF_from_Window(window, current_LF_number);
 
-	if (curLF->progress < LF_READ_PROGRESS_PREPARED) {
+	if (curLF->progress < LF_READ_PROGRESS_EVEN_FIELD_PREPARED) {
 		read_disk_thread_state = READ_DISK_THREAD_CURRENT_LF_READING;
 		printf("Current LF is not read yet\n");
-
-		sw_read.Start();
-		read_uint8(curLF->full_field, prefix + std::to_string(current_LF_number) + ".bgr");
-		_sleep(assumed_read_time_for_field - sw_read.Stop());
-
-		curLF->progress = LF_READ_PROGRESS_PREPARED;
-
+		if (curLF->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED) {
+			sw_read.Start();
+			read_uint8(curLF->odd_field, prefix + std::to_string(current_LF_number) + "_odd.bgr");
+			_sleep(assumed_read_time_for_field - sw_read.Stop());
+			curLF->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		else {
+			sw_read.Start();
+			read_uint8(curLF->even_field, prefix + std::to_string(current_LF_number) + "_even.bgr");
+			_sleep(assumed_read_time_for_field - sw_read.Stop());
+			curLF->progress = LF_READ_PROGRESS_EVEN_FIELD_PREPARED;
+		}
 		read_disk_thread_state = READ_DISK_THREAD_CURRENT_LF_READ_COMPLETE;
 	}
 
 	int leftend_LF = current_LF_number - 1 < 0 ? 0 : current_LF_number - 1;
 	int rightend_LF = leftend_LF + g_LF_window_size - 1;
 
-	if (leftend_LF > window.at(0).LF_number) { 
+	if (leftend_LF > window.front().LF_number) {
+		// LF Window has been slided to right
 		read_disk_thread_state = READ_DISK_THREAD_NEIGHBOR_LF_READING;
-		printf("move right, read in background\n");
+		printf("move right, start LF reading in the background\n");
+
 		Interlaced_LF tmp = window.front();
 		for (std::vector<Interlaced_LF>::iterator iter = window.begin(); iter != window.end() - 1; iter++) {
 			*iter = *(iter + 1);
@@ -430,18 +377,27 @@ void update_LF_window(std::vector<Interlaced_LF>& window, int& current_LF_number
 		window.back() = tmp;
 		window.back().LF_number = rightend_LF;
 		window.back().progress = LF_READ_PROGRESS_NOT_PREPARED;
-		
+		// read_uint8(window.back().full_field, prefix + std::to_string(rightend_LF) + ".bgr");
+
 		sw_read.Start();
-		read_uint8(window.back().full_field, prefix + std::to_string(rightend_LF) + ".bgr");
+		read_uint8(window.back().odd_field, prefix + std::to_string(rightend_LF) + "_odd.bgr");
 		_sleep(assumed_read_time_for_field - sw_read.Stop());
-		
-		window.back().progress = LF_READ_PROGRESS_PREPARED;
-		
-		printf("read in background complete (right)\n");
+		window.back().progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+
+		sw_read.Start();
+		read_uint8(window.back().even_field, prefix + std::to_string(rightend_LF) + "_even.bgr");
+		_sleep(assumed_read_time_for_field - sw_read.Stop());
+		window.back().progress = LF_READ_PROGRESS_EVEN_FIELD_PREPARED;
+
+		read_disk_thread_state = READ_DISK_THREAD_NEIGHBOR_LF_READ_COMPLETE;
+
+		printf("read in background complete (right), Assume that reading needs %d ms\n", assumed_read_time_for_field * 2);
 	}
-	else if (leftend_LF < window.at(0).LF_number) {
+	else if (leftend_LF < window.front().LF_number) {
+		// LF Window has been slided to left
 		read_disk_thread_state = READ_DISK_THREAD_NEIGHBOR_LF_READING;
 		printf("move left, read in background\n");
+		sw_read.Start();
 		Interlaced_LF tmp = window.back();
 		for (std::vector<Interlaced_LF>::iterator iter = window.end() - 1; iter != window.begin(); iter--) {
 			*iter = *(iter - 1);
@@ -449,19 +405,25 @@ void update_LF_window(std::vector<Interlaced_LF>& window, int& current_LF_number
 		window.front() = tmp;
 		window.front().LF_number = leftend_LF;
 		window.front().progress = LF_READ_PROGRESS_NOT_PREPARED;
-		
-		sw_read.Start();
-		read_uint8(window.front().full_field, prefix + std::to_string(leftend_LF) + ".bgr");
-		_sleep(assumed_read_time_for_field - sw_read.Stop());
-		
-		window.front().progress = LF_READ_PROGRESS_PREPARED;
 
-		printf("read in background complete (left)\n");
+		// read_uint8(window.front().full_field, prefix + std::to_string(leftend_LF) + ".bgr");
+		sw_read.Start();
+		read_uint8(window.front().odd_field, prefix + std::to_string(leftend_LF) + "_odd.bgr");
+		_sleep(assumed_read_time_for_field - sw_read.Stop());
+		window.front().progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+
+		sw_read.Start();
+		read_uint8(window.front().even_field, prefix + std::to_string(leftend_LF) + "_even.bgr");
+		_sleep(assumed_read_time_for_field - sw_read.Stop());
+		window.front().progress = LF_READ_PROGRESS_EVEN_FIELD_PREPARED;
+
+		read_disk_thread_state = READ_DISK_THREAD_NEIGHBOR_LF_READ_COMPLETE;
+
+		printf("read in background complete (left), Assume that reading needs %d ms\n", assumed_read_time_for_field * 2);
 	}
-	read_disk_thread_state = READ_DISK_THREAD_NEIGHBOR_LF_READ_COMPLETE;
 }
 
-void loop_read_disk(std::vector<Interlaced_LF>& window, int& current_center_of_LF_window, const int& curPosX, READ_DISK_THREAD_STATE& read_disk_thread_state, MAIN_THREAD_STATE& main_thread_state)
+void loop_read_disk(std::vector<Interlaced_LF>& window, int& current_center_of_LF_window, const int& curPosX, READ_DISK_THREAD_STATE& read_disk_thread_state, const MAIN_THREAD_STATE& main_thread_state)
 {
 	bool loop = true;
 	while (loop) {
@@ -488,13 +450,13 @@ int main()
 	cudaStream_t stream_main, stream_h2d;
 	cudaStreamCreate(&stream_main);
 	cudaStreamCreate(&stream_h2d);
-	
+
 	const int light_field_size = g_width * g_height *g_length * 3;
 	uint8_t* u_synthesized_view = alloc_uint8(g_output_width * g_height * 3, "unified");
-	
+
 	std::vector<std::vector<Slice>> required_slices_at_eight_nbrs(8);
 
-	int num_center_of_LF_window;
+	int current_LF_number;
 	int curPosX, curPosY;
 	int prvPosX, prvPosY;
 	std::vector<std::pair<int, int>> nbrPosition(8);
@@ -502,7 +464,9 @@ int main()
 	std::vector<Interlaced_LF> LF_window(g_LF_window_size);
 
 	for (int i = 0; i < g_LF_window_size; i++) {
-		LF_window.at(i).full_field = alloc_uint8(light_field_size, "pinned");
+		// LF_window.at(i).full_field = alloc_uint8(light_field_size, "pinned");
+		LF_window.at(i).odd_field = alloc_uint8(light_field_size / 2, "pinned");
+		LF_window.at(i).even_field = alloc_uint8(light_field_size / 2, "pinned");
 	}
 
 	/* Initialize */
@@ -513,55 +477,51 @@ int main()
 	int prevprevPosX = curPosX;
 	int prevprevPosY = curPosY;
 
-	num_center_of_LF_window = curPosX / g_length; // readdisk thread에서 updated
-	int leftend_LF = num_center_of_LF_window - 1 < 0 ? 0 : num_center_of_LF_window - 1;
+	current_LF_number = curPosX / g_length; // readdisk thread updated
+	int leftend_LF = current_LF_number - 1 < 0 ? 0 : current_LF_number - 1;
 	int rightend_LF = leftend_LF + g_LF_window_size - 1;
 
 	for (int i = 0; i < g_LF_window_size; i++)
 	{
 		LF_window.at(i).LF_number = leftend_LF + i;
-		read_uint8(LF_window.at(i).full_field, (g_directory + "Full/Column" + std::to_string(leftend_LF + i) + ".bgr"));
+		// read_uint8(LF_window.at(i).full_field, (g_directory + "Full/Column" + std::to_string(leftend_LF + i) + ".bgr"));
+		read_uint8(LF_window.at(i).odd_field, (g_directory + "Interlaced/Column" + std::to_string(leftend_LF + i) + "_odd.bgr"));
+		read_uint8(LF_window.at(i).even_field, (g_directory + "Interlaced/Column" + std::to_string(leftend_LF + i) + "_even.bgr"));
+		LF_window.at(i).progress = LF_READ_PROGRESS_EVEN_FIELD_PREPARED;
 	}
 
-	set_slice_map(); // 렌더링 결과 읽어오기
-	
+	set_slice_map(); 
+
 	int twid = 2;
 	int thei = 32;
-	dim3 threadsPerBlock(twid, thei); // 1x512 모양의 스레드가 한 블록을 구성
-	dim3 blocksPerGrid((int)ceil((float)OUTPUT_WIDTH / (float)twid), (int)ceil((float)HEIGHT / (float)thei)); // set a shape of the threads-per-block
+	dim3 threadsPerBlock(twid, thei); 
+	// interlace mode -> block shape : 2250*1280
+	dim3 blocksPerGrid((int)ceil((float)g_output_width / (float)twid), (int)ceil((float)(g_height / 2) / (float)thei)); // set a shape of the threads-per-block
 
 
 	MAIN_THREAD_STATE state_main_thread;
 	H2D_THREAD_STATE state_h2d_thread;
-	READ_DISK_THREAD_STATE state_read_disk_thread;
+	READ_DISK_THREAD_STATE state_read_thread;
 
 	state_main_thread = MAIN_THREAD_INIT;
 	state_h2d_thread = H2D_THREAD_INIT;
-	state_read_disk_thread = READ_DISK_THREAD_NEIGHBOR_LF_READ_COMPLETE;
-
-	int dir = 1;
+	state_read_thread = READ_DISK_THREAD_NEIGHBOR_LF_READ_COMPLETE;
+	 
+	int dir = 0;
 	int while_iter = 0;
 
+	// for result analysis
 	std::vector<double> time_end_to_end;
 	std::vector<std::pair<size_t, size_t>> reused_per_total;
+	std::vector<int> field_mode;
 	std::vector<std::pair<int, int>> position_trace;
-	std::string whose;
-#if GIGARAY == 1
-	whose = "gigaray/";
-#else
-	whose = "ours/";
-#endif
 
 	/* Main Loop */
 	std::mutex mtx;
-#if GIGARAY == 1
-	std::thread th_h2d(gigaray_loop_nbrs_h2d, std::ref(LRU), std::ref(LF_window), std::ref(prevprevPosX), std::ref(prevprevPosY), std::ref(prevPosX), std::ref(prevPosY), std::ref(curPosX), std::ref(curPosY), stream_h2d, std::ref(state_h2d_thread), std::ref(state_main_thread), std::ref(mtx));
-#else
 	std::thread th_h2d(loop_nbrs_h2d, std::ref(LRU), std::ref(LF_window), std::ref(nbrPosition), stream_h2d, std::ref(state_h2d_thread), std::ref(state_main_thread), std::ref(mtx));
-#endif
-	std::thread th_readdisk(loop_read_disk, std::ref(LF_window), std::ref(num_center_of_LF_window), std::ref(curPosX), std::ref(state_read_disk_thread), std::ref(state_main_thread));
-	
-	while (while_iter < 100) {
+	std::thread th_readdisk(loop_read_disk, std::ref(LF_window), std::ref(current_LF_number), std::ref(curPosX), std::ref(state_read_thread), std::ref(state_main_thread));
+
+	while (while_iter < 195) {
 		while_iter++;
 		prevprevPosX = prevPosX;
 		prevprevPosY = prevPosY;
@@ -569,20 +529,20 @@ int main()
 		prevPosY = curPosY;
 
 #if 0 // AUTO MOVE
-		if (dir % 5 == 0)
+		if (dir % 3 == 0)
 		{
 			// curPosX--;  // DDZ
 			// curPosY++;  // DDZ
-			// curPosX++;  // D
+			curPosX++;  // D
 			// curPosY++;  // X 
-			curPosX++;  // WWD
+			// curPosX++;  // WWD
 		}
 		else
 		{
 			// curPosX++;  // DDZ
-			// curPosX++;  // D
+			curPosX++;  // D
 			// curPosY++;  // X
-			curPosY--;  // WWD
+			// curPosY--;  // WWD
 		}
 		dir++;
 
@@ -596,7 +556,7 @@ int main()
 		if (state_main_thread != MAIN_THREAD_INIT) {
 			if (getKey(curPosX, curPosY) < 0) {
 				break;
-			} 
+			}
 		}
 
 		state_main_thread = MAIN_THREAD_WAIT;
@@ -606,22 +566,23 @@ int main()
 		state_main_thread = MAIN_THREAD_H2D;
 
 		mtx.lock();
-		std::pair<size_t, size_t> hitrate = cache_slice(LRU, LF_window, curPosX, curPosY); // posX, posY에 필요한 slice seg을 가져오는 데 사용
-		LRU.synchronize_HashmapOfPtr(LF_window, stream_main);
+		std::pair<size_t, size_t> hitrate = cache_slice(LRU, LF_window, curPosX, curPosY);
+		int mode = LRU.synchronize_HashmapOfPtr(LF_window, stream_main, state_read_thread);
 		mtx.unlock();
 
 		state_main_thread = MAIN_THREAD_RENDERING;
-		rendering << < blocksPerGrid, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap, curPosX, curPosY, g_width, g_height, g_slice_width);
+		rendering << < blocksPerGrid, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, mode, curPosX, curPosY, g_width, g_height, g_slice_width);
 		cudaStreamSynchronize(stream_main);
 		// main_thread_state = MAIN_THREAD_D2H;
 		// cudaMemcpyAsync(synthesized_view, u_synthesized_view, g_output_width * g_height * 3, cudaMemcpyDeviceToHost, stream_main); 
 		state_main_thread = MAIN_THREAD_COMPLETE;
-		
+
 		double stop = sw.Stop();
 		time_end_to_end.push_back(stop);
 		reused_per_total.push_back(hitrate);
+		field_mode.push_back(mode);
 		position_trace.push_back(std::make_pair(curPosX, curPosY));
-		printf("%f ms, Cached Slices: %d\n", stop, LRU.size());
+		printf("[%d] %f ms, Cached Slices: %d(Odd), %d(Even)\n", mode, stop, LRU.size(ODD), LRU.size(EVEN));
 
 #if LOGGER==1
 		FILE* fv = fopen(("./result/view/[" + std::to_string(g_output_width) + "x" + std::to_string(g_height) + "] " + IntToFormattedString(curPosX) + "_" + IntToFormattedString(curPosY) + ".bgr").c_str(), "wb");
@@ -630,11 +591,11 @@ int main()
 #endif
 	}
 #if LOGGER==1
-	FILE* fout_experimental_result = fopen(("./result/" + whose + IntToFormattedString(g_slice_width) + ".log").c_str(), "w");
-	fprintf(fout_experimental_result, "position\telapsed_time\tresued\ttotal\thitrate\n");
+	FILE* fout_experimental_result = fopen(("./result/ours/" + IntToFormattedString(g_slice_width) + ".log").c_str(), "w");
+	fprintf(fout_experimental_result, "mode\tposition\telapsed_time\tresued\ttotal\thitrate\n");
 	for (int i = 0; i < time_end_to_end.size(); i++)
 	{
-		fprintf(fout_experimental_result, "%d,%d\t%f\t%d\t%d\t%f\n", position_trace.at(i).first, position_trace.at(i).second, time_end_to_end.at(i), reused_per_total.at(i).first, reused_per_total.at(i).second, (double)reused_per_total.at(i).first /(double)reused_per_total.at(i).second);
+		fprintf(fout_experimental_result, "%d\t%d,%d\t%f\t%d\t%d\t%f\n", field_mode.at(i), position_trace.at(i).first, position_trace.at(i).second, time_end_to_end.at(i), reused_per_total.at(i).first, reused_per_total.at(i).second, (double)reused_per_total.at(i).first / (double)reused_per_total.at(i).second);
 	}
 	fclose(fout_experimental_result);
 #endif
@@ -648,12 +609,14 @@ int main()
 	}
 	if (th_readdisk.joinable())
 	{
-		state_read_disk_thread = READ_DISK_THREAD_TERMINATED;
+		state_read_thread = READ_DISK_THREAD_TERMINATED;
 		th_readdisk.join();
 	}
-	
+
 	for (int i = 0; i < g_LF_window_size; i++) {
-		free_uint8(LF_window.at(i).full_field, "pinned");
+		// free_uint8(LF_window.at(i).full_field, "pinned");
+		free_uint8(LF_window.at(i).odd_field, "pinned");
+		free_uint8(LF_window.at(i).even_field, "pinned");
 	}
 
 	free_uint8(u_synthesized_view, "unified");

@@ -10,12 +10,10 @@
 #include <queue>
 #include <conio.h> // Keyboard input 
 
-#define GIGARAY 0
-
 #define LENGTH 50
 #define WIDTH 5120
 #define HEIGHT 2560
-#define SLICE_WIDTH 128
+#define SLICE_WIDTH 256
 #define OUTPUT_WIDTH 2250
 
 const std::string g_directory = "S:/len50/5K/";
@@ -28,7 +26,6 @@ const int g_slice_size = g_slice_width * g_height * 3;
 const int g_LF_window_size = 3;
 
 #define PI 3.14159274f
-
 
 enum MAIN_THREAD_STATE {
 	MAIN_THREAD_TERMINATED = -3,
@@ -45,7 +42,7 @@ enum H2D_THREAD_STATE {
 	H2D_THREAD_INIT = -3,
 	H2D_THREAD_INTERRUPTED = -2,
 	H2D_THREAD_WAIT = -1,
-	H2D_THREAD_RUNNING = 0,
+	H2D_THREAD_RUNNING = 0
 };
 
 enum READ_DISK_THREAD_STATE {
@@ -59,14 +56,15 @@ enum READ_DISK_THREAD_STATE {
 
 enum LF_READ_PROGRESS {
 	LF_READ_PROGRESS_NOT_PREPARED = -1,
-	LF_READ_PROGRESS_PREPARED = 0,
+	LF_READ_PROGRESS_ODD_FIELD_PREPARED = 0,
+	LF_READ_PROGRESS_EVEN_FIELD_PREPARED = 1
 };
 
 struct Interlaced_LF {
 	int LF_number;
-	// uint8_t* odd_field;
-	// uint8_t* even_field;
-	uint8_t* full_field;
+	uint8_t* odd_field;
+	uint8_t* even_field;
+	// uint8_t* full_field;
 	LF_READ_PROGRESS progress;
 };
 
@@ -96,5 +94,8 @@ std::string FloatToFormattedString(float n);
 double differentiation(double prev, double cur, double timespan);
 std::pair<double, double> deadReckoning(std::pair<double, double> a_2, std::pair<double, double> a_1, std::pair<double, double> a0, double framerate, int f);
 std::vector<std::pair<double, std::pair<int, int>>> doDeadReckoning(double prevprevPosX, double prevprevPosY, double prevPosX, double prevPosY, double curPosX, double curPosY, double framerate, int pred);
+int find_slice_from_LF(const int& img, const int& slice, bool interlaced = false);
 Interlaced_LF* get_LF_from_Window(std::vector<Interlaced_LF>& window, const int& LF_number);
+
+
 #endif

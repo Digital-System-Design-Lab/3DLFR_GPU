@@ -1,4 +1,4 @@
-#ifndef LF_UTILS_CUH_
+癤�#ifndef LF_UTILS_CUH_
 #define LF_UTILS_CUH_ 
 // Properties->CUDA C/C++->Common->generate relocatable device code=Yes
 
@@ -7,60 +7,63 @@
 #include "cuda.h"
 #include "device_launch_parameters.h"
 
+enum INTERLACE_FIELD {
+	ODD = 0,
+	EVEN = 1
+};
+
 struct SliceID {
 	int lf_number;
 	int image_number;
 	int slice_number;
 };
 
-/*	
-*	DoublyLinkedList를 위한 Node
-*	Slice ID, 픽셀 데이터가 할당된 주소,
-*	prev, next 포인터
-*/
-
 struct Slice
 {
 	SliceID id;
-	uint8_t* data;
+	// uint8_t* data;
+	uint8_t* odd_data;
+	uint8_t* even_data;
 	Slice* prev;
 	Slice* next;
 };
-
-/*	
-*	Slice ID로 Slice 구조체를 찾기 위한 Hashmap과
-*	Host memory에서 Slice의 픽셀 데이터가 Device에 복사된 주소를 관리하기 위한 h_devPtr_hashmap
-*	Device가 해시맵에 접근 가능하도록 h_devPtr_hashmap으로부터 복사받는 d_devPtr_hashmap
-*	'put' method는 Cache hit/miss 동작을 모두 처리
-*/
 
 class LRUCache {
 public:
 	LRUCache(int num_limit_HashingLF, int num_limit_slice);
 	~LRUCache();
 
-	int query_hashmap(const SliceID& id);
-	void enqueue_wait_slice(SliceID id, uint8_t* data);
+	int query_hashmap(const SliceID& id, const INTERLACE_FIELD& field);
+	void enqueue_wait_slice(SliceID id, uint8_t* data, const INTERLACE_FIELD& field);
 
-	int put(const SliceID& id, uint8_t* data);
-	void put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_THREAD_STATE& h2d_thread_state); // for Worker thread
+	int put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field);
+	void put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_THREAD_STATE& p_h2d_thread_state, const INTERLACE_FIELD& field); // for Worker thread
 
-	int synchronize_HashmapOfPtr(std::vector<Interlaced_LF>& window, cudaStream_t stream);
-	int size();
-	Slice** hashmap;
-	uint8_t** h_devPtr_hashmap;
-	uint8_t** d_devPtr_hashmap;
+	int synchronize_HashmapOfPtr(std::vector<Interlaced_LF>& window, cudaStream_t stream, const READ_DISK_THREAD_STATE& read_disk_thread_state);
+	int size(const INTERLACE_FIELD& field);
+
+	Slice** hashmap_odd;
+	uint8_t** h_devPtr_hashmap_odd;
+	uint8_t** d_devPtr_hashmap_odd;
+
+	Slice** hashmap_even;
+	uint8_t** h_devPtr_hashmap_even;
+	uint8_t** d_devPtr_hashmap_even;
 private:
 	int get_hashmap_location(const SliceID& id);
 
-	Slice* head;
-	Slice* tail;
+	Slice* head_odd;
+	Slice* tail_odd;
+	Slice* head_even;
+	Slice* tail_even;
 
-	int current_LRU_size;
+	int current_LRU_size_odd;
+	int current_LRU_size_even;
 	int num_limit_slice;
 	int num_limit_HashingLF;
 
-	std::queue <std::pair<SliceID, uint8_t*>> waiting_slice;
+	std::queue <std::pair<SliceID, uint8_t*>> waiting_slice_odd;
+	std::queue <std::pair<SliceID, uint8_t*>> waiting_slice_even;
 };
 
 __device__ int dev_SignBitMasking(int l, int r);

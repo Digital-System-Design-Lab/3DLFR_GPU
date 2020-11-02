@@ -58,9 +58,9 @@ int getKey(int& posX, int& posY)
 	case 'd': {	newPosX = posX + 1;	newPosY = posY;	} break;
 	case 'c': {	newPosX = posX + 1;	newPosY = posY + 1;	} break;
 	case 'x': {	newPosX = posX;		newPosY = posY + 1; } break;
-	case 'z': {	newPosX = posX - 1;	newPosY = posY + 1; } break;
+	case 'z': {	newPosX = posX - 1;	newPosY =  posY + 1; } break;
 	case 'a': {	newPosX = posX - 1;	newPosY = posY; } break;
-	case 'q': {	newPosX = posX - 1;	newPosY = posY - 1; } break;
+	case 'q': {	newPosX = posX - 1;	newPosY =  posY - 1; } break;
 	case 27: {	printf("Terminate\n"); return -1;	}
 	default: {}
 	}
@@ -131,12 +131,21 @@ std::vector<std::pair<double, std::pair<int, int>>> doDeadReckoning(double prevp
 	{
 		std::pair<double, double> nextPos = deadReckoning(prevprevPos, prevPos, curPos, framerate, i);
 		nextPos.second = (double)clamp(nextPos.second, 1, 25);
-		v.push_back(std::make_pair(1.0 / pow(2,i), std::make_pair((int)nextPos.first, (int)nextPos.second)));
+		v.push_back(std::make_pair(1.0 / pow(2, i), std::make_pair((int)nextPos.first, (int)nextPos.second)));
 		// printf("after-%d frame : %f\n", i, deadReckoning(prevprevPosX, prevPosX, curPosX, 90.0, i));
 	}
 
 	return v;
 }
+
+int find_slice_from_LF(const int& img, const int& slice, bool interlaced)
+{
+	if (!interlaced)
+		return (img * g_width * g_height + slice * g_slice_width * g_height) * 3;
+	else
+		return (img * g_width * g_height + slice * g_slice_width * g_height) * 3 / 2;
+}
+
 
 Interlaced_LF* get_LF_from_Window(std::vector<Interlaced_LF>& window, const int& LF_number)
 {
