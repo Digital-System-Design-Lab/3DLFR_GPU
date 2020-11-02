@@ -40,11 +40,12 @@ public:
 	~LRUCache();
 
 	int query_hashmap(const SliceID& id);
+	void enqueue_wait_slice(SliceID id, uint8_t* data);
 
 	int put(const SliceID& id, uint8_t* data);
-	void put(const SliceID& id, uint8_t* data, cudaStream_t stream, int& p_h2d_thread_state, int& p_main_thread_state); // for Worker thread
+	void put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_THREAD_STATE& h2d_thread_state); // for Worker thread
 
-	int synchronize_HashmapOfPtr(cudaStream_t stream);
+	int synchronize_HashmapOfPtr(std::vector<Interlaced_LF>& window, cudaStream_t stream);
 	int size();
 	Slice** hashmap;
 	uint8_t** h_devPtr_hashmap;
@@ -58,6 +59,8 @@ private:
 	int current_LRU_size;
 	int num_limit_slice;
 	int num_limit_HashingLF;
+
+	std::queue <std::pair<SliceID, uint8_t*>> waiting_slice;
 };
 
 __device__ int dev_SignBitMasking(int l, int r);

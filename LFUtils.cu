@@ -69,6 +69,11 @@ int LRUCache::size()
 	return this->current_LRU_size;
 }
 
+void LRUCache::enqueue_wait_slice(SliceID id, uint8_t* data)
+{
+	waiting_slice.push(std::make_pair(id, data));
+}
+
 int LRUCache::put(const SliceID& id, uint8_t* data)
 {
 	int slice_location = query_hashmap(id);
@@ -137,7 +142,7 @@ int LRUCache::put(const SliceID& id, uint8_t* data)
 	}
 }
 
-void LRUCache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, int& p_h2d_thread_state, int& p_main_thread_state)
+void LRUCache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_THREAD_STATE& h2d_thread_state)
 {
 	int slice_location = query_hashmap(id);
 	if (slice_location < 0) {
@@ -180,12 +185,12 @@ void LRUCache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, int& p
 		uint8_t* d_slice; 
 		cudaError_t err = cudaMalloc((void**)&d_slice, g_slice_size); // slice를 위한 device memory 할당
 		err = cudaMemcpyAsync(d_slice, slice->data, g_slice_size, cudaMemcpyHostToDevice, stream); // data 복사
-		p_h2d_thread_state = H2D_THREAD_RUNNING;
+		h2d_thread_state = H2D_THREAD_RUNNING;
 		cudaStreamSynchronize(stream); // this stream must block the host code
 		h_devPtr_hashmap[get_hashmap_location(slice->id)] = d_slice; // hashmap에 저장된 주소공간을 할당 후
 
 		current_LRU_size++;
-		p_h2d_thread_state = H2D_THREAD_WAIT;
+		h2d_thread_state = H2D_THREAD_WAIT;
 	}
 	else {
 		// Cache hit 
@@ -205,12 +210,24 @@ void LRUCache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, int& p
 	}
 }
 
-int LRUCache::synchronize_HashmapOfPtr(cudaStream_t stream)
+int LRUCache::synchronize_HashmapOfPtr(std::vector<Interlaced_LF>& window, cudaStream_t stream)
 {
-	int ret = cudaMemcpyAsync(d_devPtr_hashmap, h_devPtr_hashmap, g_width / g_slice_width * g_length * num_limit_HashingLF * sizeof(uint8_t*), cudaMemcpyHostToDevice, stream);
+	while (!waiting_slice.empty())
+	{
+		SliceID id = waiting_slice.front().first;
+		uint8_t* data = waiting_slice.front().second;
+		Interlaced_LF* LF = get_LF_from_Window(window, id.lf_number);
+
+		if (LF->progress == LF_READ_PROGRESS_PREPARED) {
+			put(id, data);
+			waiting_slice.pop();
+		}
+	}
+	cudaError_t err = cudaMemcpyAsync(d_devPtr_hashmap, h_devPtr_hashmap, g_width / g_slice_width * g_length * num_limit_HashingLF * sizeof(uint8_t*), cudaMemcpyHostToDevice, stream);
+	assert(err == cudaSuccess);
 	cudaStreamSynchronize(stream);
 
-	return ret;
+	return 0;
 }
 
 int LRUCache::get_hashmap_location(const SliceID& id)

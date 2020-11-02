@@ -130,3 +130,15 @@ std::vector<std::pair<double, std::pair<int, int>>> doDeadReckoning(double prevp
 
 	return v;
 }
+
+Interlaced_LF* get_LF_from_Window(std::vector<Interlaced_LF>& window, const int& LF_number)
+{
+	while (1) {
+		for (std::vector<Interlaced_LF>::iterator iter = window.begin(); iter != window.end(); iter++) {
+			if (LF_number == iter->LF_number) {
+				return &*iter;
+			}
+		}
+		// printf("updating window now...\n");
+	}
+}

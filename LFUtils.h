@@ -10,7 +10,7 @@
 #include <queue>
 #include <conio.h> // Keyboard input 
 
-#define GIGARAY 1
+#define GIGARAY 0
 
 #define LENGTH 50
 #define WIDTH 5120
@@ -49,10 +49,17 @@ enum H2D_THREAD_STATE {
 };
 
 enum READ_DISK_THREAD_STATE {
-	READ_DISK_THREAD_TERMINATED = -3,
-	READ_DISK_THREAD_INIT = -2,
-	READ_DISK_THREAD_WAIT = -1,
-	READ_DISK_THREAD_RUNNING = 0,
+	READ_DISK_THREAD_TERMINATED = -2,
+	READ_DISK_THREAD_INIT = -1,
+	READ_DISK_THREAD_CURRENT_LF_READING = 0,
+	READ_DISK_THREAD_CURRENT_LF_READ_COMPLETE = 1,
+	READ_DISK_THREAD_NEIGHBOR_LF_READING = 2,
+	READ_DISK_THREAD_NEIGHBOR_LF_READ_COMPLETE = 3,
+};
+
+enum LF_READ_PROGRESS {
+	LF_READ_PROGRESS_NOT_PREPARED = -1,
+	LF_READ_PROGRESS_PREPARED = 0,
 };
 
 struct Interlaced_LF {
@@ -60,6 +67,7 @@ struct Interlaced_LF {
 	// uint8_t* odd_field;
 	// uint8_t* even_field;
 	uint8_t* full_field;
+	LF_READ_PROGRESS progress;
 };
 
 class StopWatch {
@@ -88,4 +96,5 @@ std::string FloatToFormattedString(float n);
 double differentiation(double prev, double cur, double timespan);
 std::pair<double, double> deadReckoning(std::pair<double, double> a_2, std::pair<double, double> a_1, std::pair<double, double> a0, double framerate, int f);
 std::vector<std::pair<double, std::pair<int, int>>> doDeadReckoning(double prevprevPosX, double prevprevPosY, double prevPosX, double prevPosY, double curPosX, double curPosY, double framerate, int pred);
+Interlaced_LF* get_LF_from_Window(std::vector<Interlaced_LF>& window, const int& LF_number);
 #endif
