@@ -12,7 +12,7 @@
 
 #define LOGGER 1
 
-std::vector<std::vector<std::pair<int, int>>> slice_map(26);
+std::vector<std::vector<std::pair<int, int>>> slice_map(50);
 
 __device__ int dev_find_pixel_location(int img, int w, int h, int g_width, int g_height, int g_slice_width)
 {
@@ -215,11 +215,9 @@ int find_slice_from_LF(const int& img, const int& slice)
 }
 
 void set_slice_map() {
-	//	w
-	for (int y = 1; y <= 25; y++)
+	for (int y = 1; y <= 49; y++)
 	{
-		// std::string sidLogFile = "S:/0.25/int/" + std::to_string(x) + "_" + std::to_string(y) + ".txt";
-		std::string sidLogFile = "S:/len50/" + std::to_string(5) + "K/log/" + std::to_string(25) + "_" + std::to_string(y) + ".txt";
+		std::string sidLogFile = "S:/len50/" + std::to_string(5) + "K/log2/" + std::to_string(50) + "_" + std::to_string(y) + ".txt";
 		FILE* sidLog = fopen(sidLogFile.c_str(), "r");
 
 		while (!feof(sidLog)) {
@@ -361,18 +359,12 @@ int gigaray_cache_slice_in_background(LRUCache& LRU, std::vector<Interlaced_LF>&
 				id.image_number = img % g_length;
 				id.slice_number = slice_num;
 
-				uint8_t* data;
-				for (std::vector<Interlaced_LF>::iterator it = window.begin(); it != window.end(); it++)
-				{
-					if (id.lf_number == it->LF_number) {
-						data = it->full_field;
-						break;
-					}
-				} // match LF number
+				int slice_location = find_slice_from_LF(id.image_number, id.slice_number);
+				Interlaced_LF* LF = get_LF_from_Window(window, id.lf_number);
 
-				data += find_slice_from_LF(id.image_number, id.slice_number);
-
-				LRU.put(id, data, stream_h2d, h2d_thread_state);
+				if (LF->progress == LF_READ_PROGRESS_PREPARED) {
+					LRU.put(id, LF->full_field + slice_location, stream_h2d, h2d_thread_state);
+				}
 			}
 			img++;
 		}
@@ -511,8 +503,6 @@ int main()
 
 	for (int i = 0; i < g_LF_window_size; i++) {
 		LF_window.at(i).full_field = alloc_uint8(light_field_size, "pinned");
-		// LF_window.at(i).odd_field = alloc_uint8(light_field_size / 2, "pinned");
-		// LF_window.at(i).even_field = alloc_uint8(light_field_size / 2, "pinned");
 	}
 
 	/* Initialize */
@@ -531,8 +521,6 @@ int main()
 	{
 		LF_window.at(i).LF_number = leftend_LF + i;
 		read_uint8(LF_window.at(i).full_field, (g_directory + "Full/Column" + std::to_string(leftend_LF + i) + ".bgr"));
-		// read_uint8(LF_window.at(i).odd_field, (g_directory + "LF/Column" + std::to_string(leftend_LF + i) + "_odd.bgr"));
-		// read_uint8(LF_window.at(i).even_field, (g_directory + "LF/Column" + std::to_string(leftend_LF + i) + "_even.bgr"));
 	}
 
 	set_slice_map(); // 렌더링 결과 읽어오기
@@ -551,12 +539,19 @@ int main()
 	state_h2d_thread = H2D_THREAD_INIT;
 	state_read_disk_thread = READ_DISK_THREAD_NEIGHBOR_LF_READ_COMPLETE;
 
-	int dir = 0;
+	int dir = 1;
 	int while_iter = 0;
 
 	std::vector<double> time_end_to_end;
 	std::vector<std::pair<size_t, size_t>> reused_per_total;
 	std::vector<std::pair<int, int>> position_trace;
+	std::string whose;
+#if GIGARAY == 1
+	whose = "gigaray/";
+#else
+	whose = "ours/";
+#endif
+
 	/* Main Loop */
 	std::mutex mtx;
 #if GIGARAY == 1
@@ -566,28 +561,28 @@ int main()
 #endif
 	std::thread th_readdisk(loop_read_disk, std::ref(LF_window), std::ref(num_center_of_LF_window), std::ref(curPosX), std::ref(state_read_disk_thread), std::ref(state_main_thread));
 	
-	while (while_iter < 195) {
+	while (while_iter < 100) {
 		while_iter++;
 		prevprevPosX = prevPosX;
 		prevprevPosY = prevPosY;
 		prevPosX = curPosX;
 		prevPosY = curPosY;
 
-#if 1 // AUTO MOVE
-		if (dir % 3 == 0)
+#if 0 // AUTO MOVE
+		if (dir % 5 == 0)
 		{
 			// curPosX--;  // DDZ
 			// curPosY++;  // DDZ
-			curPosX++;  // D
+			// curPosX++;  // D
 			// curPosY++;  // X 
-			// curPosX++;  // WWD
+			curPosX++;  // WWD
 		}
 		else
 		{
 			// curPosX++;  // DDZ
-			curPosX++;  // D
+			// curPosX++;  // D
 			// curPosY++;  // X
-			// curPosY--;  // WWD
+			curPosY--;  // WWD
 		}
 		dir++;
 
@@ -635,7 +630,7 @@ int main()
 #endif
 	}
 #if LOGGER==1
-	FILE* fout_experimental_result = fopen(("./result/" + std::to_string(GIGARAY) + "/" + IntToFormattedString(g_slice_width) + ".log").c_str(), "w");
+	FILE* fout_experimental_result = fopen(("./result/" + whose + IntToFormattedString(g_slice_width) + ".log").c_str(), "w");
 	fprintf(fout_experimental_result, "position\telapsed_time\tresued\ttotal\thitrate\n");
 	for (int i = 0; i < time_end_to_end.size(); i++)
 	{
@@ -659,8 +654,6 @@ int main()
 	
 	for (int i = 0; i < g_LF_window_size; i++) {
 		free_uint8(LF_window.at(i).full_field, "pinned");
-		// free_uint8(LF_window.at(i).odd_field, "pinned");
-		// free_uint8(LF_window.at(i).even_field, "pinned");
 	}
 
 	free_uint8(u_synthesized_view, "unified");

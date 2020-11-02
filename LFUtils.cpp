@@ -49,21 +49,28 @@ int getKey(int& posX, int& posY)
 	printf("%d, %d -> ", posX, posY);
 	int c = getch();
 
+	int newPosX, newPosY;
+
 	switch (c)
 	{
-	case 'w': {			posY--; } break;
-	case 'e': {	posX++;	posY--; } break;
-	case 'd': {	posX++;			} break;
-	case 'c': {	posX++;	posY++;	} break;
-	case 'x': {			posY++; } break;
-	case 'z': {	posX--; posY++; } break;
-	case 'a': {	posX--; } break;
-	case 'q': {	posX--; posY--; } break;
+	case 'w': {	newPosX = posX;		newPosY = posY - 1; } break;
+	case 'e': {	newPosX = posX + 1;	newPosY = posY - 1; } break;
+	case 'd': {	newPosX = posX + 1;	newPosY = posY;	} break;
+	case 'c': {	newPosX = posX + 1;	newPosY = posY + 1;	} break;
+	case 'x': {	newPosX = posX;		newPosY = posY + 1; } break;
+	case 'z': {	newPosX = posX - 1;	newPosY = posY + 1; } break;
+	case 'a': {	newPosX = posX - 1;	newPosY = posY; } break;
+	case 'q': {	newPosX = posX - 1;	newPosY = posY - 1; } break;
 	case 27: {	printf("Terminate\n"); return -1;	}
-	default: break;
+	default: {}
+	}
+	if (!(newPosX < 0 || newPosY < 0 || newPosY >= 49))
+	{
+		posX = newPosX;
+		posY = newPosY;
 	}
 	printf("%d, %d\n", posX, posY);
-	
+
 	return 0;
 }
 
