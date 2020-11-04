@@ -2,69 +2,94 @@
 #define LF_UTILS_CUH_ 
 // Properties->CUDA C/C++->Common->generate relocatable device code=Yes
 
-#include "LFUtils.h"
+#include "enums.h"
+
 #include "cuda_runtime.h"
 #include "cuda.h"
 #include "device_launch_parameters.h"
 
-enum INTERLACE_FIELD {
-	ODD = 0,
-	EVEN = 1
+#include <iostream>
+#include <string>
+#include <fcntl.h> // file open flag
+#include <io.h> // file descriptor
+#include <chrono>
+#include <vector>
+#include <queue>
+#include <assert.h>
+#include <mutex>
+#include <conio.h> // Keyboard input 
+
+#define LENGTH 50
+#define WIDTH 5120
+#define HEIGHT 2560
+#define SLICE_WIDTH 256
+#define OUTPUT_WIDTH 2250
+#define PI 3.14159274f
+
+const std::string g_directory = "S:/len50/5K/";
+const int g_width = WIDTH;
+const int g_height = HEIGHT;
+const int g_length = LENGTH;
+const int g_slice_width = SLICE_WIDTH;
+const int g_output_width = OUTPUT_WIDTH;
+const int g_slice_size = g_slice_width * g_height * 3;
+const int g_LF_window_size = 3;
+
+struct Interlaced_LF {
+	int LF_number;
+	ROW_COL type;
+	uint8_t* odd_field;
+	uint8_t* even_field;
+	LF_READ_PROGRESS progress;
 };
 
-struct SliceID {
-	int lf_number;
-	int image_number;
-	int slice_number;
-};
-
-struct Slice
-{
-	SliceID id;
-	// uint8_t* data;
-	uint8_t* odd_data;
-	uint8_t* even_data;
-	Slice* prev;
-	Slice* next;
-};
-
-class LRUCache {
+class StopWatch {
 public:
-	LRUCache(int num_limit_HashingLF, int num_limit_slice);
-	~LRUCache();
-
-	int query_hashmap(const SliceID& id, const INTERLACE_FIELD& field);
-	void enqueue_wait_slice(SliceID id, uint8_t* data, const INTERLACE_FIELD& field);
-
-	int put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field);
-	void put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_THREAD_STATE& p_h2d_thread_state, const INTERLACE_FIELD& field); // for Worker thread
-
-	int synchronize_HashmapOfPtr(std::vector<Interlaced_LF>& window, cudaStream_t stream, const READ_DISK_THREAD_STATE& read_disk_thread_state);
-	int size(const INTERLACE_FIELD& field);
-
-	Slice** hashmap_odd;
-	uint8_t** h_devPtr_hashmap_odd;
-	uint8_t** d_devPtr_hashmap_odd;
-
-	Slice** hashmap_even;
-	uint8_t** h_devPtr_hashmap_even;
-	uint8_t** d_devPtr_hashmap_even;
+	void Start();
+	double Stop();
 private:
-	int get_hashmap_location(const SliceID& id);
-
-	Slice* head_odd;
-	Slice* tail_odd;
-	Slice* head_even;
-	Slice* tail_even;
-
-	int current_LRU_size_odd;
-	int current_LRU_size_even;
-	int num_limit_slice;
-	int num_limit_HashingLF;
-
-	std::queue <std::pair<SliceID, uint8_t*>> waiting_slice_odd;
-	std::queue <std::pair<SliceID, uint8_t*>> waiting_slice_even;
+	std::chrono::high_resolution_clock::time_point t0;
 };
+
+uint8_t* alloc_uint8(int size, std::string alloc_type);
+
+void free_uint8(uint8_t* buf, std::string alloc_type);
+
+int read_uint8(uint8_t* buf, std::string filename, const INTERLACE_FIELD& field, int size = -1);
+
+int write_uint8(uint8_t* buf, std::string filename, int size = -1);
+
+double getEuclideanDist(int x, int y, int origX = 0, int origY = 0);
+
+int clamp(int val, int min, int max);
+
+double rad2deg(double rad);
+
+double deg2rad(double deg);
+
+void minmax(int val, int& min, int& max);
+
+int getKey(int& posX, int& posY);
+
+std::string IntToFormattedString(int n);
+
+std::string FloatToFormattedString(float n);
+
+double differentiation(double prev, double cur, double timespan);
+
+std::pair<double, double> deadReckoning(std::pair<double, double> a_2, std::pair<double, double> a_1, std::pair<double, double> a0, double framerate, int f);
+
+std::vector<std::pair<double, std::pair<int, int>>> doDeadReckoning(double prevprevPosX, double prevprevPosY, double prevPosX, double prevPosY, double curPosX, double curPosY, double framerate, int pred);
+
+int find_slice_from_LF(const int& img, const int& slice, bool interlaced = false);
+
+Interlaced_LF* get_LF_from_Window(std::vector<Interlaced_LF>& window, const int& LF_number);
+
+int preRendering(int z, float fov = 90.0f, float times = 270.0f);
+
+std::vector<int> getLFUID(const int& posX, const int& posY);
+
+void find_LF_number_BMW(int& front, int& right, int& back, int& left, const int& LFUID);
 
 __device__ int dev_SignBitMasking(int l, int r);
 

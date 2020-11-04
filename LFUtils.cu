@@ -1,5 +1,344 @@
 #include "LFUtils.cuh"
 
+uint8_t* alloc_uint8(int size, std::string alloc_type) {
+	uint8_t* buf;
+	if (alloc_type == "pinned") {
+		cudaMallocHost((void**)&buf, size);
+		memset(buf, 0, size);
+	}
+	else if (alloc_type == "pageable") {
+		buf = new uint8_t[size]();
+		memset(buf, 0, size);
+
+	}
+	else if (alloc_type == "device") {
+		cudaMalloc((void**)&buf, size);
+		cudaMemset(buf, 0, size);
+	}
+	else if (alloc_type == "unified") {
+		cudaMallocManaged((void**)&buf, size);
+	}
+	else exit(1);
+
+	return buf;
+}
+
+void free_uint8(uint8_t* buf, std::string alloc_type) {
+	if (alloc_type == "pinned") {
+		cudaFreeHost(buf);
+	}
+	else if (alloc_type == "pageable") {
+		delete[] buf;
+	}
+	else if (alloc_type == "device" || alloc_type == "unified") {
+		cudaFree(buf);
+	}
+	else exit(1);
+}
+
+int read_uint8(uint8_t* buf, std::string filename, const INTERLACE_FIELD& field, int size)
+{
+	int fd;
+	int ret;
+
+	if (field == ODD)
+		filename += "_odd.bgr";
+	else
+		filename += "_even.bgr";
+
+	fd = open(filename.c_str(), O_RDONLY | O_BINARY);
+	ret = fd;
+	if (ret < 0) {
+		printf("open failed, %s\n", filename.c_str());
+		assert(ret == 0);
+		exit(1);
+	}
+
+	if (size < 0) {
+		if ((ret = lseek(fd, 0, SEEK_END)) < 0) {
+			printf("SEEK_END failed, %s\n", filename.c_str());
+			assert(ret == 0);
+			exit(1);
+		}
+		if ((ret = tell(fd)) < 0) {
+			printf("tell failed, %s\n", filename.c_str());
+			assert(ret == 0);
+			exit(1);
+		}
+		size = ret;
+		if ((ret = lseek(fd, 0, SEEK_SET)) < 0) {
+			printf("SEEK_SET failed, %s\n", filename.c_str());
+			assert(ret == 0);
+			exit(1);
+		}
+	}
+
+	ret = read(fd, buf, sizeof(uint8_t) * size); // x64
+	close(fd);
+
+	if (ret != size) {
+		printf("read failed, %s\n", filename.c_str());
+		assert(ret == size);
+		exit(1);
+	}
+
+	return ret;
+}
+
+int write_uint8(uint8_t* buf, std::string filename, int size)
+{
+	int fd;
+	if ((fd = open(filename.c_str(), O_WRONLY | O_BINARY)) < 0) return fd;
+	if (size < 0) size = _msize(buf);
+
+	int ret = write(fd, buf, sizeof(uint8_t) * size); // x64 
+	close(fd);
+
+	return ret;
+}
+
+void StopWatch::Start() {
+	t0 = std::chrono::high_resolution_clock::now();
+}
+
+double StopWatch::Stop() {
+	double stop = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch() - t0.time_since_epoch()).count();
+	return stop / 1000000.0; // ms
+}
+
+double getEuclideanDist(int x, int y, int origX, int origY)
+{
+	return sqrt(pow(((double)x - (double)origX), 2) + pow(((double)y - (double)origY), 2));
+}
+
+int clamp(int val, int min, int max)
+{
+	if (val > max)
+		return max;
+	else if (val < min)
+		return min;
+	else return val;
+}
+
+double rad2deg(double rad)
+{
+	return (rad * 180.0 / PI);
+}
+
+double deg2rad(double deg)
+{
+	return (deg * PI / 180.0);
+}
+
+float deg2rad(float deg)
+{
+	return (deg * PI / 180.0f);
+}
+
+void minmax(int val, int& min, int& max)
+{
+	min = (val < min) ? val : min;
+	max = (val > max) ? val : max;
+}
+
+int getKey(int& posX, int& posY)
+{
+	printf("%d, %d -> ", posX, posY);
+	int c = getch();
+
+	int newPosX, newPosY;
+
+	switch (c)
+	{
+	case 'w': {	newPosX = posX;		newPosY = posY - 1; } break;
+	case 'e': {	newPosX = posX + 1;	newPosY = posY - 1; } break;
+	case 'd': {	newPosX = posX + 1;	newPosY = posY;	} break;
+	case 'c': {	newPosX = posX + 1;	newPosY = posY + 1;	} break;
+	case 'x': {	newPosX = posX;		newPosY = posY + 1; } break;
+	case 'z': {	newPosX = posX - 1;	newPosY = posY + 1; } break;
+	case 'a': {	newPosX = posX - 1;	newPosY = posY; } break;
+	case 'q': {	newPosX = posX - 1;	newPosY = posY - 1; } break;
+	case 27: {	printf("Terminate\n"); return -1;	}
+	default: {}
+	}
+	if (!(newPosX < 0 || newPosY < 0 || newPosY >= 49))
+	{
+		posX = newPosX;
+		posY = newPosY;
+	}
+	printf("%d, %d\n", posX, posY);
+
+	return 0;
+}
+
+std::string IntToFormattedString(int n)
+{
+	if (n < 10)
+		return ("000" + std::to_string(n));
+	else if (n < 100)
+		return ("00" + std::to_string(n));
+	else if (n < 1000)
+		return ("0" + std::to_string(n));
+	else
+		return (std::to_string(n));
+}
+
+std::string FloatToFormattedString(float f)
+{
+	if (f < 10)
+		return ("000" + std::to_string(f));
+	else if (f < 100)
+		return ("00" + std::to_string(f));
+	else if (f < 1000)
+		return ("0" + std::to_string(f));
+	else
+		return (std::to_string(f));
+}
+
+
+double differentiation(double prev, double cur, double timespan)
+{
+	return (cur - prev) / timespan;
+}
+
+std::pair<double, double> deadReckoning(std::pair<double, double> a_2, std::pair<double, double> a_1, std::pair<double, double> a0, double framerate, int f)
+{
+	double tf = (double)f / framerate;
+
+	std::pair<double, double> v0;
+	std::pair<double, double> v_1;
+	std::pair<double, double> c0;
+
+	v0 = std::make_pair(differentiation(a_1.first, a0.first, 1.0 / framerate), differentiation(a_1.second, a0.second, 1.0 / framerate));
+	v_1 = std::make_pair(differentiation(a_2.first, a_1.first, 1.0 / framerate), differentiation(a_2.second, a_1.second, 1.0 / framerate));
+	c0 = std::make_pair(differentiation(v_1.first, v0.first, tf), differentiation(v_1.second, v0.second, tf));
+
+	return std::make_pair(a0.first + v0.first * tf + 0.5 * c0.first * tf * tf, a0.second + v0.second * tf + 0.5 * c0.second * tf * tf);;
+}
+
+std::vector<std::pair<double, std::pair<int, int>>> doDeadReckoning(double prevprevPosX, double prevprevPosY, double prevPosX, double prevPosY, double curPosX, double curPosY, double framerate, int pred)
+{
+	std::pair<double, double> prevprevPos = std::make_pair(prevprevPosX, prevprevPosY);
+	std::pair<double, double> prevPos = std::make_pair(prevPosX, prevPosY);
+	std::pair<double, double> curPos = std::make_pair(curPosX, curPosY);
+
+	std::vector<std::pair<double, std::pair<int, int>>> v;
+
+	for (int i = 1; i <= pred; i++)
+	{
+		std::pair<double, double> nextPos = deadReckoning(prevprevPos, prevPos, curPos, framerate, i);
+		nextPos.second = (double)clamp(nextPos.second, 1, 25);
+		v.push_back(std::make_pair(1.0 / pow(2, i), std::make_pair((int)nextPos.first, (int)nextPos.second)));
+		// printf("after-%d frame : %f\n", i, deadReckoning(prevprevPosX, prevPosX, curPosX, 90.0, i));
+	}
+
+	return v;
+}
+
+int find_slice_from_LF(const int& img, const int& slice, bool interlaced)
+{
+	if (!interlaced)
+		return (img * g_width * g_height + slice * g_slice_width * g_height) * 3;
+	else
+		return (img * g_width * g_height + slice * g_slice_width * g_height) * 3 / 2;
+}
+
+
+Interlaced_LF* get_LF_from_Window(std::vector<Interlaced_LF>& window, const int& LF_number)
+{
+	while (1) {
+		for (std::vector<Interlaced_LF>::iterator iter = window.begin(); iter != window.end(); iter++) {
+			if (LF_number == iter->LF_number) {
+				return &*iter;
+			}
+		}
+		// printf("updating window now...\n");
+	}
+}
+
+int preRendering(int z, float fov, float times)
+{	// ISSUE :  outputWidth 계산과정 (setRenderingParam()이랑 log파일 결과랑 다름) -> 가끔 이상한 픽셀라인이 섞여나오는 이유
+	int errCode = 0;
+
+	int LFUW = 100;
+	int Y = LFUW / 2;
+
+	int z0 = z;
+	int x0 = z0; // projection 
+
+	int left_end = x0 - z0 * tanf(deg2rad(fov / 2.0f)); // caution - tan vs. tanf -> diff.result
+	int right_end = x0 + z0 * tanf(deg2rad(fov / 2.0f)); // caution - tan vs. tanf -> diff.result
+	float theta_L = -fov / 2.0;
+	float theta_R = fov / 2.0;
+
+	int prevP = 1e6;
+	int min = 1e6;
+	int max = -1e6;
+
+	std::string filename = "S:/test/5K/" + std::to_string(z) + ".txt";
+	FILE* fp = fopen(filename.c_str(), "w");
+
+	for (int w = 0; w < OUTPUT_WIDTH; w++)
+	{
+		float theta_P = theta_L + (0.04f * (float)w); // 가져올 ray가 front와 이루는 각 (rad)
+		float xP = x0 + z0 * tanf(deg2rad(theta_P)); // tan -> 구간 내에서 odd function
+
+		float b = sqrtf(2.0f) * LFUW;
+		float N_dist = sqrt((float)((xP - x0) * (xP - x0) + (Y - z) * (Y - z))) / b;
+
+		int P_1 = (int)(roundf(xP));// (int)(floorf(xP));
+
+		// P_1 = Clamp(P_1, 0, LEN_CAM_ARRAY - 1);
+
+		float U = (theta_P / (fov / 2.0f)) * WIDTH / 2 + WIDTH / 2;
+
+		int U_1 = (int)(roundf(U));
+
+		U_1 %= WIDTH;
+		U_1 = clamp(U_1, 0, WIDTH - 1);
+		if ((prevP != 1e6 && prevP != P_1) || w == OUTPUT_WIDTH - 1)
+		{
+			fprintf(fp, "%d\t%d\t%d\n", prevP, min, max);
+			min = 1e6;
+			max = -1e6;
+		}
+		prevP = P_1;
+		minmax(U_1, min, max);
+
+	}
+
+	fclose(fp);
+	return 0;
+}
+
+std::vector<int> getLFUID(const int& posX, const int& posY)
+{
+	std::vector<int> v(9);
+	int LFUID = 5 * (posX / 100) + (posY / 100);
+
+	if (LFUID >= 6 || LFUID <= 23) {
+		v[0] = LFUID;
+		v[8] = LFUID + 1;
+		v[1] = LFUID + 5 + 1;
+		v[2] = LFUID + 5;
+		v[3] = LFUID + 5 - 1;
+		v[4] = LFUID - 1;
+		v[5] = LFUID - 5 - 1;
+		v[6] = LFUID - 5;
+		v[7] = LFUID - 5 + 1;
+	}
+
+	return v; // 실험용이므로 position 이동을 x:(100, 500), y:(100, 400)으로 제한
+}
+
+void find_LF_number_BMW(int& front, int& right, int& back, int& left, const int& LFUID)
+{ // 5600 x 600 BMW dataset
+	left = 56 * (LFUID / 5) + (LFUID % 5) + 1;
+	right = left + 56;
+	front = 336 - (LFUID / 5) - 6 * (LFUID % 5);
+	back = front + 6;
+}
+
 __device__ int dev_SignBitMasking(int l, int r)
 {
 	return !!((l - r) & 0x80000000); // if l < r : return 1
@@ -19,347 +358,4 @@ __device__ float dev_rad2deg(float rad)
 __device__ float dev_deg2rad(float deg)
 {
 	return (deg * 3.14159274f / 180.0f);
-}
-
-LRUCache::LRUCache(int num_limit_HashingLF, int num_limit_slice)
-{
-	this->head_odd = nullptr;
-	this->tail_odd = nullptr;
-	this->head_even = nullptr;
-	this->tail_even = nullptr;
-
-	this->num_limit_HashingLF = num_limit_HashingLF; // 해싱 가능한 LF의 범위 (LF 0부터 시작)
-	this->num_limit_slice = num_limit_slice;
-	this->current_LRU_size_odd = 0; // 현재 아이템 수
-	this->current_LRU_size_even = 0; // 현재 아이템 수
-
-	hashmap_odd = new Slice*[g_width / g_slice_width * g_length * num_limit_HashingLF];
-	for (int i = 0; i < g_width / g_slice_width * g_length * num_limit_HashingLF; i++)
-	{
-		hashmap_odd[i] = nullptr;
-	} // query를 host hashmap에 한 후, uint8_t* 결과만 d_ hashmap에 동기화
-
-	cudaMallocHost((void**)&h_devPtr_hashmap_odd, g_width / g_slice_width * g_length * num_limit_HashingLF * sizeof(uint8_t*));
-	for (int i = 0; i < g_width / g_slice_width * g_length * num_limit_HashingLF; i++)
-	{
-		h_devPtr_hashmap_odd[i] = nullptr;
-	} // query를 host hashmap에 한 후, uint8_t* 결과만 d_ hashmap에 동기화
-
-	cudaMalloc((void**)&d_devPtr_hashmap_odd, g_width / g_slice_width * g_length * num_limit_HashingLF * sizeof(uint8_t*));
-
-	hashmap_even = new Slice*[g_width / g_slice_width * g_length * num_limit_HashingLF];
-	for (int i = 0; i < g_width / g_slice_width * g_length * num_limit_HashingLF; i++)
-	{
-		hashmap_even[i] = nullptr;
-	} // query를 host hashmap에 한 후, uint8_t* 결과만 d_ hashmap에 동기화
-
-	cudaMallocHost((void**)&h_devPtr_hashmap_even, g_width / g_slice_width * g_length * num_limit_HashingLF * sizeof(uint8_t*));
-	for (int i = 0; i < g_width / g_slice_width * g_length * num_limit_HashingLF; i++)
-	{
-		h_devPtr_hashmap_even[i] = nullptr;
-	} // query를 host hashmap에 한 후, uint8_t* 결과만 d_ hashmap에 동기화
-
-	cudaMalloc((void**)&d_devPtr_hashmap_even, g_width / g_slice_width * g_length * num_limit_HashingLF * sizeof(uint8_t*));
-}
-LRUCache::~LRUCache()
-{
-	while (head_odd != tail_odd)
-	{
-		Slice* tmp = head_odd;
-
-		uint8_t* d_data = h_devPtr_hashmap_odd[this->get_hashmap_location(tmp->id)];
-		h_devPtr_hashmap_odd[this->get_hashmap_location(tmp->id)] = nullptr;
-		cudaFree(d_data);
-
-		head_odd->next->prev = nullptr;
-		head_odd = head_odd->next;
-		delete tmp;
-	}
-	delete tail_odd;
-	delete[] hashmap_odd;
-	cudaFreeHost(h_devPtr_hashmap_odd);
-	cudaFree(d_devPtr_hashmap_odd);
-
-	while (head_even != tail_even)
-	{
-		Slice* tmp = head_even;
-
-		uint8_t* d_data = h_devPtr_hashmap_even[this->get_hashmap_location(tmp->id)];
-		h_devPtr_hashmap_even[this->get_hashmap_location(tmp->id)] = nullptr;
-		cudaFree(d_data);
-
-		head_even->next->prev = nullptr;
-		head_even = head_even->next;
-		delete tmp;
-	}
-	delete tail_even;
-	delete[] hashmap_even;
-	cudaFreeHost(h_devPtr_hashmap_even);
-	cudaFree(d_devPtr_hashmap_even);
-}
-
-int LRUCache::size(const INTERLACE_FIELD& field)
-{
-	if (field == ODD) return current_LRU_size_odd;
-	else return current_LRU_size_even;
-}
-
-void LRUCache::enqueue_wait_slice(SliceID id, uint8_t* data, const INTERLACE_FIELD& field)
-{
-	if (field == ODD) {
-		waiting_slice_odd.push(std::make_pair(id, data));
-	}
-	else {
-		waiting_slice_even.push(std::make_pair(id, data));
-	}
-}
-
-int LRUCache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field)
-{
-	Slice** hashmap;
-	uint8_t** h_devPtr_hashmap;
-	uint8_t** d_devPtr_hashmap;
-	Slice** head;
-	Slice** tail;
-	int* current_LRU_size;
-	if (field == ODD) {
-		hashmap = hashmap_odd;
-		h_devPtr_hashmap = h_devPtr_hashmap_odd;
-		d_devPtr_hashmap = d_devPtr_hashmap_odd;
-		head = &head_odd;
-		tail = &tail_odd;
-		current_LRU_size = &current_LRU_size_odd;
-	}
-	else {
-		hashmap = hashmap_even;
-		h_devPtr_hashmap = h_devPtr_hashmap_even;
-		d_devPtr_hashmap = d_devPtr_hashmap_even;
-		head = &head_even;
-		tail = &tail_even;
-		current_LRU_size = &current_LRU_size_even;
-	}
-
-	int slice_location = query_hashmap(id, field);
-	if (slice_location < 0) // Cache miss
-	{
-		if (*current_LRU_size >= num_limit_slice) {
-			// cache full, evict head
-			hashmap[get_hashmap_location((*head)->id)] = nullptr;
-
-			Slice* tmp = (*head);
-			(*head)->next->prev = nullptr;
-			(*head) = (*head)->next;
-			delete tmp;
-
-			uint8_t* d_tmp = h_devPtr_hashmap[get_hashmap_location((*head)->id)];
-			h_devPtr_hashmap[get_hashmap_location((*head)->id)] = nullptr;
-			cudaFree(d_tmp);
-
-			(*current_LRU_size)--;
-		}
-
-		Slice* slice = new Slice;
-		slice->id = id;
-		if (field == ODD) slice->odd_data = data;
-		else slice->even_data = data;
-
-		if ((*head) == nullptr) {
-			// No item in cache
-			(*head) = slice;
-			(*tail) = slice;
-			(*head)->prev = nullptr;
-			(*tail)->next = nullptr;
-		}
-		else {
-			(*tail)->next = slice;
-			slice->prev = (*tail);
-			(*tail) = slice;
-			(*tail)->next = nullptr;
-		}
-		hashmap[get_hashmap_location(slice->id)] = slice;
-		uint8_t* d_slice;
-		cudaMalloc((void**)&d_slice, g_slice_size / 2);
-		cudaMemcpy(d_slice, data, g_slice_size / 2, cudaMemcpyHostToDevice); // data 복사
-		h_devPtr_hashmap[get_hashmap_location(slice->id)] = d_slice; // hashmap에 저장된 주소공간을 할당 후
-
-		(*current_LRU_size)++;
-
-		return 0;
-	}
-	else {
-		// Cache hit 
-		Slice* slice = hashmap[slice_location];
-		if (slice != (*tail)) {
-			if (slice == (*head)) {
-				(*head) = (*head)->next;
-				(*head)->prev = nullptr;
-			}
-			if (slice->prev != nullptr) slice->prev->next = slice->next;
-			if (slice->next != nullptr) slice->next->prev = slice->prev;
-			slice->prev = (*tail);
-			(*tail)->next = slice;
-			slice->next = nullptr;
-			(*tail) = slice;
-		}
-
-		return 1;
-	}
-}
-
-void LRUCache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_THREAD_STATE& p_h2d_thread_state, const INTERLACE_FIELD& field)
-{
-	Slice** hashmap;
-	uint8_t** h_devPtr_hashmap;
-	uint8_t** d_devPtr_hashmap;
-	Slice** head;
-	Slice** tail;
-	int* current_LRU_size;
-
-	if (field == ODD) {
-		hashmap = hashmap_odd;
-		h_devPtr_hashmap = h_devPtr_hashmap_odd;
-		d_devPtr_hashmap = d_devPtr_hashmap_odd;
-		head = &head_odd;
-		tail = &tail_odd;
-		current_LRU_size = &current_LRU_size_odd;
-	}
-	else {
-		hashmap = hashmap_even;
-		h_devPtr_hashmap = h_devPtr_hashmap_even;
-		d_devPtr_hashmap = d_devPtr_hashmap_even;
-		head = &head_even;
-		tail = &tail_even;
-		current_LRU_size = &current_LRU_size_even;
-	}
-
-	int slice_location = query_hashmap(id, field);
-	if (slice_location < 0) {
-		// cache miss
-		if (*current_LRU_size >= num_limit_slice) {
-			// cache full, evict head
-			hashmap[get_hashmap_location((*head)->id)] = nullptr;
-
-			Slice* tmp = (*head);
-			(*head)->next->prev = nullptr;
-			(*head) = (*head)->next;
-			delete tmp;
-
-			uint8_t* d_tmp = h_devPtr_hashmap[get_hashmap_location((*head)->id)];
-			h_devPtr_hashmap[get_hashmap_location((*head)->id)] = nullptr;
-			cudaFree(d_tmp);
-
-			(*current_LRU_size)--;
-		}
-
-		Slice* slice = new Slice;
-		slice->id = id;
-		if (field) slice->odd_data = data;
-		else slice->even_data = data;
-
-		if ((*head) == nullptr) {
-			// No item in cache
-			(*head) = slice;
-			(*tail) = slice;
-			(*head)->prev = nullptr;
-			(*tail)->next = nullptr;
-		}
-		else {
-			(*tail)->next = slice;
-			slice->prev = (*tail);
-			(*tail) = slice;
-			(*tail)->next = nullptr;
-		}
-
-		hashmap[get_hashmap_location(slice->id)] = slice;
-		uint8_t* d_slice;
-		cudaError_t err = cudaMalloc((void**)&d_slice, g_slice_size); // slice를 위한 device memory 할당
-		err = cudaMemcpyAsync(d_slice, data, g_slice_size, cudaMemcpyHostToDevice, stream); // data 복사
-		p_h2d_thread_state = H2D_THREAD_RUNNING;
-		cudaStreamSynchronize(stream); // this stream must block the host code
-		h_devPtr_hashmap[get_hashmap_location(slice->id)] = d_slice; // hashmap에 저장된 주소공간을 할당 후
-
-		(*current_LRU_size)++;
-		p_h2d_thread_state = H2D_THREAD_WAIT;
-	}
-	else {
-		// Cache hit 
-		Slice* slice = hashmap[slice_location];
-		if (slice != (*tail)) {
-			if (slice == (*head)) {
-				(*head) = (*head)->next;
-				(*head)->prev = nullptr;
-			}
-			if (slice->prev != nullptr) slice->prev->next = slice->next;
-			if (slice->next != nullptr) slice->next->prev = slice->prev;
-			slice->prev = (*tail);
-			(*tail)->next = slice;
-			slice->next = nullptr;
-			(*tail) = slice;
-		}
-	}
-}
-
-int LRUCache::synchronize_HashmapOfPtr(std::vector<Interlaced_LF>& window, cudaStream_t stream, const READ_DISK_THREAD_STATE& read_disk_thread_state)
-{
-	while (!waiting_slice_odd.empty())
-	{
-		SliceID id = waiting_slice_odd.front().first;
-		uint8_t* data = waiting_slice_odd.front().second;
-		Interlaced_LF* LF = get_LF_from_Window(window, id.lf_number);
-
-		if (LF->progress >= LF_READ_PROGRESS_ODD_FIELD_PREPARED) {
-			put(id, data, ODD);
-			waiting_slice_odd.pop();
-		}
-	}
-	cudaError_t err = cudaMemcpyAsync(d_devPtr_hashmap_odd, h_devPtr_hashmap_odd, g_width / g_slice_width * g_length * num_limit_HashingLF * sizeof(uint8_t*), cudaMemcpyHostToDevice, stream);
-	assert(err == cudaSuccess);
-	cudaStreamSynchronize(stream);
-
-	bool isEvenAvailable = true;
-
-	if (read_disk_thread_state >= READ_DISK_THREAD_NEIGHBOR_LF_READING)
-	{
-		while (!waiting_slice_even.empty())
-		{
-			SliceID id = waiting_slice_even.front().first;
-			uint8_t* data = waiting_slice_even.front().second;
-			Interlaced_LF* LF = get_LF_from_Window(window, id.lf_number);
-
-			if (LF->progress == LF_READ_PROGRESS_EVEN_FIELD_PREPARED) {
-				put(id, data, EVEN);
-				waiting_slice_even.pop();
-				isEvenAvailable = true;
-			}
-			else {
-				isEvenAvailable = false;
-				break;
-			}
-		}
-		if (isEvenAvailable) {
-			cudaError_t err = cudaMemcpyAsync(d_devPtr_hashmap_even, h_devPtr_hashmap_even, g_width / g_slice_width * g_length * num_limit_HashingLF * sizeof(uint8_t*), cudaMemcpyHostToDevice, stream);
-			assert(err == cudaSuccess);
-			cudaStreamSynchronize(stream);
-
-			return 1;
-		}
-	}
-
-	return 0;
-}
-
-int LRUCache::get_hashmap_location(const SliceID& id)
-{
-	return id.lf_number * (g_width / g_slice_width) * g_length + id.image_number * (g_width / g_slice_width) + id.slice_number;
-}
-
-int LRUCache::query_hashmap(const SliceID& id, const INTERLACE_FIELD& field)
-{
-	Slice** hashmap;
-	if (field == ODD) hashmap = hashmap_odd;
-	else hashmap = hashmap_even;
-	int slice_location = get_hashmap_location(id);
-
-	if (hashmap[slice_location] == nullptr) return -1;
-	else return slice_location;
 }

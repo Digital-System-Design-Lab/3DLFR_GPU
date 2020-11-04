@@ -1,18 +1,14 @@
-﻿#include "LFUtils.cuh"
+﻿#include "LRUCache.h"
+#include "LFU_Window.h"
+#include "BMW_FilePath.h"
+
 #include <thread> // std::thread
 #include <future> // std::future
-#include <mutex>
-#include <fcntl.h> // file open flag
-#include <io.h> // file descriptor
-#include <assert.h> // assert
 #include <stdlib.h> // size_t
 #include <stdint.h> // uint8_t
-#include <map>
-#include <list>
-
 #define LOGGER 1
 
-std::vector<std::vector<std::pair<int, int>>> slice_map(50);
+std::vector<std::vector<std::pair<int, int>>> slice_map(100);
 
 __device__ int dev_find_pixel_location(int img, int w, int h, int g_width, int g_height, int g_slice_width)
 {
@@ -98,102 +94,10 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 
 }
 
-uint8_t* alloc_uint8(int size, std::string alloc_type) {
-	uint8_t* buf;
-	if (alloc_type == "pinned") {
-		cudaMallocHost((void**)&buf, size);
-		memset(buf, 0, size);
-	}
-	else if (alloc_type == "pageable") {
-		buf = new uint8_t[size]();
-		memset(buf, 0, size);
-
-	}
-	else if (alloc_type == "device") {
-		cudaMalloc((void**)&buf, size);
-		cudaMemset(buf, 0, size);
-	}
-	else if (alloc_type == "unified") {
-		cudaMallocManaged((void**)&buf, size);
-	}
-	else exit(1);
-
-	return buf;
-}
-
-void free_uint8(uint8_t* buf, std::string alloc_type) {
-	if (alloc_type == "pinned") {
-		cudaFreeHost(buf);
-	}
-	else if (alloc_type == "pageable") {
-		delete[] buf;
-	}
-	else if (alloc_type == "device" || alloc_type == "unified") {
-		cudaFree(buf);
-	}
-	else exit(1);
-}
-
-int read_uint8(uint8_t* buf, std::string filename, int size = -1)
-{
-	int fd;
-	int ret;
-
-	fd = open(filename.c_str(), O_RDONLY | O_BINARY);
-	ret = fd;
-	if (ret < 0) {
-		printf("open failed, %s\n", filename.c_str());
-		assert(ret == 0);
-		exit(1);
-	}
-
-	if (size < 0) {
-		if ((ret = lseek(fd, 0, SEEK_END)) < 0) {
-			printf("SEEK_END failed, %s\n", filename.c_str());
-			assert(ret == 0);
-			exit(1);
-		}
-		if ((ret = tell(fd)) < 0) {
-			printf("tell failed, %s\n", filename.c_str());
-			assert(ret == 0);
-			exit(1);
-		}
-		size = ret;
-		if ((ret = lseek(fd, 0, SEEK_SET)) < 0) {
-			printf("SEEK_SET failed, %s\n", filename.c_str());
-			assert(ret == 0);
-			exit(1);
-		}
-	}
-
-	ret = read(fd, buf, sizeof(uint8_t) * size); // x64
-	close(fd);
-
-	if (ret != size) {
-		printf("read failed, %s\n", filename.c_str());
-		assert(ret == size);
-		exit(1);
-	}
-
-	return ret;
-}
-
-int write_uint8(uint8_t* buf, std::string filename, int size = -1)
-{
-	int fd;
-	if ((fd = open(filename.c_str(), O_WRONLY | O_BINARY)) < 0) return fd;
-	if (size < 0) size = _msize(buf);
-
-	int ret = write(fd, buf, sizeof(uint8_t) * size); // x64 
-	close(fd);
-
-	return ret;
-}
-
 void set_slice_map() {
-	for (int y = 1; y <= 49; y++)
+	for (int y = 1; y <= 100; y++)
 	{
-		std::string sidLogFile = "S:/len50/" + std::to_string(5) + "K/log2/" + std::to_string(50) + "_" + std::to_string(y) + ".txt";
+		std::string sidLogFile = "S:/len50/" + std::to_string(5) + "K/log3/" + std::to_string(y) + ".txt";
 		FILE* sidLog = fopen(sidLogFile.c_str(), "r");
 
 		while (!feof(sidLog)) {
@@ -349,13 +253,13 @@ void update_LF_window(std::vector<Interlaced_LF>& window, int& current_LF_number
 		printf("Current LF is not read yet\n");
 		if (curLF->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED) {
 			sw_read.Start();
-			read_uint8(curLF->odd_field, prefix + std::to_string(current_LF_number) + "_odd.bgr");
+			//read_uint8(curLF->odd_field, prefix + std::to_string(current_LF_number) + "_odd.bgr");
 			_sleep(assumed_read_time_for_field - sw_read.Stop());
 			curLF->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
 		}
 		else {
 			sw_read.Start();
-			read_uint8(curLF->even_field, prefix + std::to_string(current_LF_number) + "_even.bgr");
+			//read_uint8(curLF->even_field, prefix + std::to_string(current_LF_number) + "_even.bgr");
 			_sleep(assumed_read_time_for_field - sw_read.Stop());
 			curLF->progress = LF_READ_PROGRESS_EVEN_FIELD_PREPARED;
 		}
@@ -380,12 +284,12 @@ void update_LF_window(std::vector<Interlaced_LF>& window, int& current_LF_number
 		// read_uint8(window.back().full_field, prefix + std::to_string(rightend_LF) + ".bgr");
 
 		sw_read.Start();
-		read_uint8(window.back().odd_field, prefix + std::to_string(rightend_LF) + "_odd.bgr");
+		//read_uint8(window.back().odd_field, prefix + std::to_string(rightend_LF) + "_odd.bgr");
 		_sleep(assumed_read_time_for_field - sw_read.Stop());
 		window.back().progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
 
 		sw_read.Start();
-		read_uint8(window.back().even_field, prefix + std::to_string(rightend_LF) + "_even.bgr");
+		//read_uint8(window.back().even_field, prefix + std::to_string(rightend_LF) + "_even.bgr");
 		_sleep(assumed_read_time_for_field - sw_read.Stop());
 		window.back().progress = LF_READ_PROGRESS_EVEN_FIELD_PREPARED;
 
@@ -408,12 +312,12 @@ void update_LF_window(std::vector<Interlaced_LF>& window, int& current_LF_number
 
 		// read_uint8(window.front().full_field, prefix + std::to_string(leftend_LF) + ".bgr");
 		sw_read.Start();
-		read_uint8(window.front().odd_field, prefix + std::to_string(leftend_LF) + "_odd.bgr");
+		//read_uint8(window.front().odd_field, prefix + std::to_string(leftend_LF) + "_odd.bgr");
 		_sleep(assumed_read_time_for_field - sw_read.Stop());
 		window.front().progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
 
 		sw_read.Start();
-		read_uint8(window.front().even_field, prefix + std::to_string(leftend_LF) + "_even.bgr");
+		//read_uint8(window.front().even_field, prefix + std::to_string(leftend_LF) + "_even.bgr");
 		_sleep(assumed_read_time_for_field - sw_read.Stop());
 		window.front().progress = LF_READ_PROGRESS_EVEN_FIELD_PREPARED;
 
@@ -427,7 +331,7 @@ void loop_read_disk(std::vector<Interlaced_LF>& window, int& current_center_of_L
 {
 	bool loop = true;
 	while (loop) {
-		update_LF_window(window, current_center_of_LF_window, curPosX, read_disk_thread_state);
+		// update_LF_window(window, current_center_of_LF_window, curPosX, read_disk_thread_state);
 		if (main_thread_state == MAIN_THREAD_TERMINATED) loop = false;
 	}
 }
@@ -442,11 +346,10 @@ int main()
 	printf("Input resolution : %dx%dx%d\n", g_width, g_height, g_length);
 	printf("Output resolution : %dx%d\n", g_output_width, g_height);
 	printf("Slice resolution : %dx%d\n", g_slice_width, g_height);
-	printf("Slice Cache Size Limit : %f MB\n", g_slice_size * limit_cached_slice / 1e6);
+	printf("Slice Cache Size Limit : %f MB\n", g_slice_size * limit_cached_slice / 1e6 * 2);
 	printf("Hashing LF Range Limit : %d to %d\n", 0, limit_hashing_LF);
 
 	LRUCache LRU(limit_hashing_LF, limit_cached_slice);
-
 	cudaStream_t stream_main, stream_h2d;
 	cudaStreamCreate(&stream_main);
 	cudaStreamCreate(&stream_h2d);
@@ -459,19 +362,22 @@ int main()
 	int current_LF_number;
 	int curPosX, curPosY;
 	int prvPosX, prvPosY;
+
 	std::vector<std::pair<int, int>> nbrPosition(8);
 
 	std::vector<Interlaced_LF> LF_window(g_LF_window_size);
-
-	for (int i = 0; i < g_LF_window_size; i++) {
-		// LF_window.at(i).full_field = alloc_uint8(light_field_size, "pinned");
-		LF_window.at(i).odd_field = alloc_uint8(light_field_size / 2, "pinned");
-		LF_window.at(i).even_field = alloc_uint8(light_field_size / 2, "pinned");
-	}
+	
+	// for (int i = 0; i < g_LF_window_size; i++) {
+	// 	LF_window.at(i).odd_field = alloc_uint8(light_field_size / 2, "pinned");
+	// 	LF_window.at(i).even_field = alloc_uint8(light_field_size / 2, "pinned");
+	// }
 
 	/* Initialize */
-	curPosX = 101;
-	curPosY = 24;
+	curPosX = 200;
+	curPosY = 200;
+
+	LFU_Window window(curPosX, curPosY, light_field_size / 2);
+	
 	int prevPosX = curPosX;
 	int prevPosY = curPosY;
 	int prevprevPosX = curPosX;
@@ -484,9 +390,8 @@ int main()
 	for (int i = 0; i < g_LF_window_size; i++)
 	{
 		LF_window.at(i).LF_number = leftend_LF + i;
-		// read_uint8(LF_window.at(i).full_field, (g_directory + "Full/Column" + std::to_string(leftend_LF + i) + ".bgr"));
-		read_uint8(LF_window.at(i).odd_field, (g_directory + "Interlaced/Column" + std::to_string(leftend_LF + i) + "_odd.bgr"));
-		read_uint8(LF_window.at(i).even_field, (g_directory + "Interlaced/Column" + std::to_string(leftend_LF + i) + "_even.bgr"));
+		// read_uint8(LF_window.at(i).odd_field, (g_directory + "Interlaced/Column" + std::to_string(leftend_LF + i) + "_odd.bgr"));
+		// read_uint8(LF_window.at(i).even_field, (g_directory + "Interlaced/Column" + std::to_string(leftend_LF + i) + "_even.bgr"));
 		LF_window.at(i).progress = LF_READ_PROGRESS_EVEN_FIELD_PREPARED;
 	}
 
@@ -614,7 +519,6 @@ int main()
 	}
 
 	for (int i = 0; i < g_LF_window_size; i++) {
-		// free_uint8(LF_window.at(i).full_field, "pinned");
 		free_uint8(LF_window.at(i).odd_field, "pinned");
 		free_uint8(LF_window.at(i).even_field, "pinned");
 	}
