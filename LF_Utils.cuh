@@ -53,6 +53,7 @@ struct SliceRange
 typedef std::vector<SliceRange> SliceSet;
 
 struct Interlaced_LF {
+	int LF_number;
 	ROW_COL type;
 	uint8_t* odd_field = nullptr;
 	uint8_t* even_field = nullptr;

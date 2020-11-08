@@ -321,9 +321,9 @@ int getLFUID(const int& posX, const int& posY)
 
 void find_LF_number_BMW(int& front, int& right, int& back, int& left, const int& LFUID)
 { // 5600 x 600 BMW dataset
-	left = 56 * (LFUID / 5) + (LFUID % 5) + 1;
-	right = left + 56;
-	front = 336 - (LFUID / 5) - 6 * (LFUID % 5);
+	left = LFUID;
+	right = left + 5;
+	front = 64 - (LFUID / 5) - 6 * (LFUID % 5);
 	back = front + 6;
 }
 

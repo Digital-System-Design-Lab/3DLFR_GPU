@@ -5,7 +5,7 @@
 #include "LFU_Window.h"
 
 struct SliceID {
-	FOUR_DIRECTION direction;
+	int lf_number;
 	int image_number;
 	int slice_number;
 };

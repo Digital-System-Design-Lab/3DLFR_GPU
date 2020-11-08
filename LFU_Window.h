@@ -6,11 +6,7 @@ extern std::string BMW_LF[30][4];
 
 struct LFU {
 	int id;
-	Interlaced_LF* front = nullptr;
-	Interlaced_LF* right = nullptr;
-	Interlaced_LF* back = nullptr;
-	Interlaced_LF* left = nullptr;
-
+	Interlaced_LF* LF[4] = { nullptr, nullptr, nullptr, nullptr };
 	LFU* nbr[8] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
 };
 

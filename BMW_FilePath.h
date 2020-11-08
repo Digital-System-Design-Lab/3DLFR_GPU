@@ -4,185 +4,187 @@
 #include "LFU_Window.h"
 
 std::string BMW_LF[30][4] =
-{ {
-"S:/BMW/Row336",
-"S:/BMW/Column57",
-"S:/BMW/Row342",
-"S:/BMW/Column1"
+{
+	{
+		"S:/BMW/Row64",
+		"S:/BMW/Column5",
+		"S:/BMW/Row70",
+		"S:/BMW/Column0"
 	},
 	{
-"S:/BMW/Row330",
-"S:/BMW/Column58",
-"S:/BMW/Row336",
-"S:/BMW/Column2"
+		"S:/BMW/Row58",
+		"S:/BMW/Column6",
+		"S:/BMW/Row64",
+		"S:/BMW/Column1"
 	},
 	{
-"S:/BMW/Row324",
-"S:/BMW/Column59",
-"S:/BMW/Row330",
-"S:/BMW/Column3"
+		"S:/BMW/Row52",
+		"S:/BMW/Column7",
+		"S:/BMW/Row58",
+		"S:/BMW/Column2"
 	},
 	{
-"S:/BMW/Row318",
-"S:/BMW/Column60",
-"S:/BMW/Row324",
-"S:/BMW/Column4"
+		"S:/BMW/Row46",
+		"S:/BMW/Column8",
+		"S:/BMW/Row52",
+		"S:/BMW/Column3"
 	},
 	{
-"S:/BMW/Row312",
-"S:/BMW/Column61",
-"S:/BMW/Row318",
-"S:/BMW/Column5"
+		"S:/BMW/Row40",
+		"S:/BMW/Column9",
+		"S:/BMW/Row46",
+		"S:/BMW/Column4"
 	},
 	{
-"S:/BMW/Row335",
-"S:/BMW/Column113",
-"S:/BMW/Row341",
-"S:/BMW/Column57"
+		"S:/BMW/Row63",
+		"S:/BMW/Column10",
+		"S:/BMW/Row69",
+		"S:/BMW/Column5"
 	},
 	{
-"S:/BMW/Row329",
-"S:/BMW/Column114",
-"S:/BMW/Row335",
-"S:/BMW/Column58"
+		"S:/BMW/Row57",
+		"S:/BMW/Column11",
+		"S:/BMW/Row63",
+		"S:/BMW/Column6"
 	},
 	{
-"S:/BMW/Row323",
-"S:/BMW/Column115",
-"S:/BMW/Row329",
-"S:/BMW/Column59"
+		"S:/BMW/Row51",
+		"S:/BMW/Column12",
+		"S:/BMW/Row57",
+		"S:/BMW/Column7"
 	},
 	{
-"S:/BMW/Row317",
-"S:/BMW/Column116",
-"S:/BMW/Row323",
-"S:/BMW/Column60"
+		"S:/BMW/Row45",
+		"S:/BMW/Column13",
+		"S:/BMW/Row51",
+		"S:/BMW/Column8"
 	},
 	{
-"S:/BMW/Row311",
-"S:/BMW/Column117",
-"S:/BMW/Row317",
-"S:/BMW/Column61"
+		"S:/BMW/Row39",
+		"S:/BMW/Column14",
+		"S:/BMW/Row45",
+		"S:/BMW/Column9"
 	},
 	{
-"S:/BMW/Row334",
-"S:/BMW/Column169",
-"S:/BMW/Row340",
-"S:/BMW/Column113"
+		"S:/BMW/Row62",
+		"S:/BMW/Column15",
+		"S:/BMW/Row68",
+		"S:/BMW/Column10"
 	},
 	{
-"S:/BMW/Row328",
-"S:/BMW/Column170",
-"S:/BMW/Row334",
-"S:/BMW/Column114"
+		"S:/BMW/Row56",
+		"S:/BMW/Column16",
+		"S:/BMW/Row62",
+		"S:/BMW/Column11"
 	},
 	{
-"S:/BMW/Row322",
-"S:/BMW/Column171",
-"S:/BMW/Row328",
-"S:/BMW/Column115"
+		"S:/BMW/Row50",
+		"S:/BMW/Column17",
+		"S:/BMW/Row56",
+		"S:/BMW/Column12"
 	},
 	{
-"S:/BMW/Row316",
-"S:/BMW/Column172",
-"S:/BMW/Row322",
-"S:/BMW/Column116"
+		"S:/BMW/Row44",
+		"S:/BMW/Column18",
+		"S:/BMW/Row50",
+		"S:/BMW/Column13"
 	},
 	{
-"S:/BMW/Row310",
-"S:/BMW/Column173",
-"S:/BMW/Row316",
-"S:/BMW/Column117"
+		"S:/BMW/Row38",
+		"S:/BMW/Column19",
+		"S:/BMW/Row44",
+		"S:/BMW/Column14"
 	},
 	{
-"S:/BMW/Row333",
-"S:/BMW/Column225",
-"S:/BMW/Row339",
-"S:/BMW/Column169"
+		"S:/BMW/Row61",
+		"S:/BMW/Column20",
+		"S:/BMW/Row67",
+		"S:/BMW/Column15"
 	},
 	{
-"S:/BMW/Row327",
-"S:/BMW/Column226",
-"S:/BMW/Row333",
-"S:/BMW/Column170"
+		"S:/BMW/Row55",
+		"S:/BMW/Column21",
+		"S:/BMW/Row61",
+		"S:/BMW/Column16"
 	},
 	{
-"S:/BMW/Row321",
-"S:/BMW/Column227",
-"S:/BMW/Row327",
-"S:/BMW/Column171"
+		"S:/BMW/Row49",
+		"S:/BMW/Column22",
+		"S:/BMW/Row55",
+		"S:/BMW/Column17"
 	},
 	{
-"S:/BMW/Row315",
-"S:/BMW/Column228",
-"S:/BMW/Row321",
-"S:/BMW/Column172"
+		"S:/BMW/Row43",
+		"S:/BMW/Column23",
+		"S:/BMW/Row49",
+		"S:/BMW/Column18"
 	},
 	{
-"S:/BMW/Row309",
-"S:/BMW/Column229",
-"S:/BMW/Row315",
-"S:/BMW/Column173"
+		"S:/BMW/Row37",
+		"S:/BMW/Column24",
+		"S:/BMW/Row43",
+		"S:/BMW/Column19"
 	},
 	{
-"S:/BMW/Row332",
-"S:/BMW/Column281",
-"S:/BMW/Row338",
-"S:/BMW/Column225"
+		"S:/BMW/Row60",
+		"S:/BMW/Column25",
+		"S:/BMW/Row66",
+		"S:/BMW/Column20"
 	},
 	{
-"S:/BMW/Row326",
-"S:/BMW/Column282",
-"S:/BMW/Row332",
-"S:/BMW/Column226"
+		"S:/BMW/Row54",
+		"S:/BMW/Column26",
+		"S:/BMW/Row60",
+		"S:/BMW/Column21"
 	},
 	{
-"S:/BMW/Row320",
-"S:/BMW/Column283",
-"S:/BMW/Row326",
-"S:/BMW/Column227"
+		"S:/BMW/Row48",
+		"S:/BMW/Column27",
+		"S:/BMW/Row54",
+		"S:/BMW/Column22"
 	},
 	{
-"S:/BMW/Row314",
-"S:/BMW/Column284",
-"S:/BMW/Row320",
-"S:/BMW/Column228"
+		"S:/BMW/Row42",
+		"S:/BMW/Column28",
+		"S:/BMW/Row48",
+		"S:/BMW/Column23"
 	},
 	{
-"S:/BMW/Row308",
-"S:/BMW/Column285",
-"S:/BMW/Row314",
-"S:/BMW/Column229"
+		"S:/BMW/Row36",
+		"S:/BMW/Column29",
+		"S:/BMW/Row42",
+		"S:/BMW/Column24"
 	},
 	{
-"S:/BMW/Row331",
-"S:/BMW/Column337",
-"S:/BMW/Row337",
-"S:/BMW/Column281"
+		"S:/BMW/Row59",
+		"S:/BMW/Column30",
+		"S:/BMW/Row65",
+		"S:/BMW/Column25"
 	},
 	{
-"S:/BMW/Row325",
-"S:/BMW/Column338",
-"S:/BMW/Row331",
-"S:/BMW/Column282"
+		"S:/BMW/Row53",
+		"S:/BMW/Column31",
+		"S:/BMW/Row59",
+		"S:/BMW/Column26"
 	},
 	{
-"S:/BMW/Row319",
-"S:/BMW/Column339",
-"S:/BMW/Row325",
-"S:/BMW/Column283"
+		"S:/BMW/Row47",
+		"S:/BMW/Column32",
+		"S:/BMW/Row53",
+		"S:/BMW/Column27"
 	},
 	{
-"S:/BMW/Row313",
-"S:/BMW/Column340",
-"S:/BMW/Row319",
-"S:/BMW/Column284"
+		"S:/BMW/Row41",
+		"S:/BMW/Column33",
+		"S:/BMW/Row47",
+		"S:/BMW/Column28"
 	},
 	{
-"S:/BMW/Row307",
-"S:/BMW/Column341",
-"S:/BMW/Row313",
-"S:/BMW/Column285"
+		"S:/BMW/Row35",
+		"S:/BMW/Column34",
+		"S:/BMW/Row41",
+		"S:/BMW/Column29"
 	}
 };
+
 #endif

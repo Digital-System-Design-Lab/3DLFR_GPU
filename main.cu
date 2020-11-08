@@ -142,25 +142,25 @@ std::pair<size_t, size_t> cache_slice(LRUCache& LRU, const LFU_Window& window, S
 	{
 		for (int slice_num = it->range_begin; slice_num <= it->range_end; slice_num++)
 		{
-			window.m_center->
+			
 			SliceID id;
-			id.direction = it->direction;
+			id.lf_number = window.m_center->LF[it->direction]->LF_number;
 			id.image_number = it->image_num;
 			id.slice_number = slice_num;
 
 			int slice_location = find_slice_from_LF(id.image_number, id.slice_number, true);
 
 			if (window.pinned_memory_status < PINNED_LFU_ODD_AVAILABLE) {
-				LRU.enqueue_wait_slice(id, window.m_pinnedLFU[ODD][id.direction] + slice_location, ODD);
-				LRU.enqueue_wait_slice(id, window.m_pinnedLFU[EVEN][id.direction] + slice_location, EVEN);
+				LRU.enqueue_wait_slice(id, window.m_pinnedLFU[ODD][it->direction] + slice_location, ODD);
+				LRU.enqueue_wait_slice(id, window.m_pinnedLFU[EVEN][it->direction] + slice_location, EVEN);
 			}
 			else if (window.pinned_memory_status == PINNED_LFU_ODD_AVAILABLE) {
-				LRU.put(id, window.m_pinnedLFU[ODD][id.direction] + slice_location, ODD);
-				LRU.enqueue_wait_slice(id, window.m_pinnedLFU[EVEN][id.direction] + slice_location, EVEN);
+				LRU.put(id, window.m_pinnedLFU[ODD][it->direction] + slice_location, ODD);
+				LRU.enqueue_wait_slice(id, window.m_pinnedLFU[EVEN][it->direction] + slice_location, EVEN);
 			}
 			else {
-				LRU.put(id, window.m_pinnedLFU[ODD][id.direction] + slice_location, ODD);
-				LRU.put(id, window.m_pinnedLFU[EVEN][id.direction] + slice_location, EVEN);
+				LRU.put(id, window.m_pinnedLFU[ODD][it->direction] + slice_location, ODD);
+				LRU.put(id, window.m_pinnedLFU[EVEN][it->direction] + slice_location, EVEN);
 			}
 			try_caching++;
 		}
@@ -250,7 +250,7 @@ int main()
 	/* Declare */
 	StopWatch sw; // for benchmark
 	const int limit_cached_slice = 500;
-	const int limit_hashing_LF = 50;
+	const int limit_hashing_LF = 71;
 
 	printf("Input resolution : %dx%dx%d\n", g_width, g_height, g_length);
 	printf("Output resolution : %dx%d\n", g_output_width, g_height);
