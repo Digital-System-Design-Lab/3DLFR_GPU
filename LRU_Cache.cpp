@@ -295,35 +295,21 @@ int LRUCache::synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream, 
 	assert(err == cudaSuccess);
 	cudaStreamSynchronize(stream);
 
-	bool isEvenAvailable = true;
-
-	if (read_disk_thread_state >= READ_DISK_THREAD_NEIGHBOR_LF_READING)
-	{
+	if (window.pinned_memory_status == PINNED_LFU_EVEN_AVAILABLE) {
 		while (!waiting_slice_even.empty())
 		{
 			SliceID id = waiting_slice_even.front().first;
 			uint8_t* data = waiting_slice_even.front().second;
-
-			if (window.pinned_memory_status == PINNED_LFU_EVEN_AVAILABLE) {
-				put(id, data, EVEN);
-				waiting_slice_even.pop();
-				isEvenAvailable = true;
-			}
-			else {
-				isEvenAvailable = false;
-				break;
-			}
+			put(id, data, EVEN);
+			waiting_slice_even.pop();
 		}
-		if (isEvenAvailable) {
-			cudaError_t err = cudaMemcpyAsync(d_devPtr_hashmap_even, h_devPtr_hashmap_even, g_width / g_slice_width * g_length * num_limit_HashingLF * sizeof(uint8_t*), cudaMemcpyHostToDevice, stream);
-			assert(err == cudaSuccess);
-			cudaStreamSynchronize(stream);
+		cudaError_t err = cudaMemcpyAsync(d_devPtr_hashmap_even, h_devPtr_hashmap_even, g_width / g_slice_width * g_length * num_limit_HashingLF * sizeof(uint8_t*), cudaMemcpyHostToDevice, stream);
+		assert(err == cudaSuccess);
+		cudaStreamSynchronize(stream);
 
-			return 1;
-		}
+		return 1;
 	}
-
-	return 0;
+	else return 0;
 }
 
 int LRUCache::get_hashmap_location(const SliceID& id)

@@ -20,7 +20,7 @@ __device__ int dev_query_hashmap(const int& lf, const int& img, const int& slice
 	return lf * (g_width / g_slice_width) * g_length + img * (g_width / g_slice_width) + slice;
 }
 
-__global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** d_hashmap_even, int mode, int direction, int posX, int posY, int g_width, int g_height, int g_slice_width, float fov = 90.0f, float times = 270.0f)
+__global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** d_hashmap_even, int offset, int mode, int direction, int posX, int posY, int g_width, int g_height, int g_slice_width, float fov = 90.0f, float times = 270.0f)
 {
 	int tw = blockIdx.x * blockDim.x + threadIdx.x; // blockIdx.x = (int)[0, (out_w - 1)]
 	int th = blockIdx.y * blockDim.y + threadIdx.y; // threadIdx = (int)[0, (g_height - 1)]
@@ -102,24 +102,24 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 		uint8_t oddpel_ch0 = d_hashmap_odd[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 0]; // Random access to pixel column
 		uint8_t oddpel_ch1 = d_hashmap_odd[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 1]; // Random access to pixel column
 		uint8_t oddpel_ch2 = d_hashmap_odd[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 2]; // Random access to pixel column
-		outImage[(2 * th) * (4500 * 3) + tw * 3 + 0] = oddpel_ch0; // b 
-		outImage[(2 * th) * (4500 * 3) + tw * 3 + 1] = oddpel_ch1; // g 
-		outImage[(2 * th) * (4500 * 3) + tw * 3 + 2] = oddpel_ch2; // r 
+		outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 0] = oddpel_ch0; // b 
+		outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 1] = oddpel_ch1; // g 
+		outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 2] = oddpel_ch2; // r 
 
 		if (mode == 1) {
 			uint8_t evenpel_ch0 = d_hashmap_even[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 0]; // Random access to pixel column
 			uint8_t evenpel_ch1 = d_hashmap_even[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 1]; // Random access to pixel column
 			uint8_t evenpel_ch2 = d_hashmap_even[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 2]; // Random access to pixel column
 		
-			outImage[(2 * th + 1) * (4500 * 3) + tw * 3 + 0] = evenpel_ch0; // b 
-			outImage[(2 * th + 1) * (4500 * 3) + tw * 3 + 1] = evenpel_ch1; // g 
-			outImage[(2 * th + 1) * (4500 * 3) + tw * 3 + 2] = evenpel_ch2; // r 
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 0] = evenpel_ch0; // b 
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = evenpel_ch1; // g 
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = evenpel_ch2; // r 
 		}
 		else
 		{
-			outImage[(2 * th + 1) * (4500 * 3) + tw * 3 + 0] = oddpel_ch0; // b 
-			outImage[(2 * th + 1) * (4500 * 3) + tw * 3 + 1] = oddpel_ch1; // g 
-			outImage[(2 * th + 1) * (4500 * 3) + tw * 3 + 2] = oddpel_ch2; // r 
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 0] = oddpel_ch0; // b 
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = oddpel_ch1; // g 
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = oddpel_ch2; // r 
 		}
 	}
 }
@@ -219,27 +219,30 @@ int cache_slice_in_background(LRUCache& LRU, const LFU_Window& window, SliceSet 
 				int posX_at_p = nbrPosition.at(p).first % 100;
 				int posY_at_p = nbrPosition.at(p).second % 100;
 
-				int dir = slice_set[posX_at_p][posY_at_p].at(i).direction;
-				int slice_num = slice_set[posX_at_p][posY_at_p].at(i).range_begin + s;
-				int img_num = slice_set[posX_at_p][posY_at_p].at(i).image_num;
 
-				if (i < slice_set[posX_at_p][posY_at_p].size() && slice_num <= slice_set[posX_at_p][posY_at_p].at(i).range_end)
+				if (i < slice_set[posX_at_p][posY_at_p].size())
 				{
-					SliceID id;
-					id.lf_number = window.m_center->LF[dir]->LF_number;
-					id.image_number = img_num;
-					id.slice_number = slice_num;
+					int slice_num = slice_set[posX_at_p][posY_at_p].at(i).range_begin + s;
+					int dir = slice_set[posX_at_p][posY_at_p].at(i).direction;
+					int img_num = slice_set[posX_at_p][posY_at_p].at(i).image_num;
 
-					int slice_location = find_slice_from_LF(id.image_number, id.slice_number, true);
-					if (window.pinned_memory_status == PINNED_LFU_ODD_AVAILABLE) {
-						if(!LRU.isFull(ODD))
-							LRU.put(id, window.m_pinnedLFU[ODD][dir] + slice_location, stream_h2d, thread_state_h2d, ODD);
-					}
-					if (window.pinned_memory_status == PINNED_LFU_EVEN_AVAILABLE) {
-						if (!LRU.isFull(ODD))
-							LRU.put(id, window.m_pinnedLFU[ODD][dir] + slice_location, stream_h2d, thread_state_h2d, ODD);
-						if (!LRU.isFull(EVEN))
-							LRU.put(id, window.m_pinnedLFU[EVEN][dir] + slice_location, stream_h2d, thread_state_h2d, EVEN);
+					if (slice_num <= slice_set[posX_at_p][posY_at_p].at(i).range_end) {
+						SliceID id;
+						id.lf_number = window.m_center->LF[dir]->LF_number;
+						id.image_number = img_num;
+						id.slice_number = slice_num;
+
+						int slice_location = find_slice_from_LF(id.image_number, id.slice_number, true);
+						if (window.pinned_memory_status == PINNED_LFU_ODD_AVAILABLE) {
+							if (!LRU.isFull(ODD))
+								LRU.put(id, window.m_pinnedLFU[ODD][dir] + slice_location, stream_h2d, thread_state_h2d, ODD);
+						}
+						if (window.pinned_memory_status == PINNED_LFU_EVEN_AVAILABLE) {
+							if (!LRU.isFull(ODD))
+								LRU.put(id, window.m_pinnedLFU[ODD][dir] + slice_location, stream_h2d, thread_state_h2d, ODD);
+							if (!LRU.isFull(EVEN))
+								LRU.put(id, window.m_pinnedLFU[EVEN][dir] + slice_location, stream_h2d, thread_state_h2d, EVEN);
+						}
 					}
 				}
 			}
@@ -305,7 +308,7 @@ int main()
 	printf("Slice Cache Size Limit : %llu items -> %lf MB\n", limit_cached_slice, g_slice_size * limit_cached_slice / 1e6 * 2);
 	printf("Hashing LF Range Limit : %d to %d\n", 0, limit_hashing_LF);
 
-	const size_t light_field_size = g_width * g_height *g_length * 3 / 2;
+	const size_t light_field_size = g_width * g_height * g_length * 3 / 2;
 
 	int localPosX[4];
 	int localPosY[4];
@@ -330,10 +333,8 @@ int main()
 	printf("[MAIN] LRU Cache is created\n");
 	LFU_Window window(curPosX, curPosY, light_field_size);
 	printf("[MAIN] LFU Window is created\n");
-	uint8_t* u_synthesized_view[4];
-	for (int i = 0; i < 4; i++) {
-		u_synthesized_view[i] = alloc_uint8(4500 * g_height * 3, "unified");
-	}
+	uint8_t* u_synthesized_view;
+	u_synthesized_view = alloc_uint8(g_output_width * g_height * 3, "unified");
 	printf("[MAIN] Memory space for output is allocated\n");
 
 	MAIN_THREAD_STATE state_main_thread;
@@ -391,15 +392,7 @@ int main()
 				break;
 			}
 		}
-		if (window.pinned_memory_status < PINNED_LFU_ODD_AVAILABLE)
-		{
-			printf("[Warning] Current window is not loaded yet\n");
-			curPosX = prevPosX;
-			curPosY = prevPosY;
-		}
 		set_rendering_range(localPosX, localPosY, output_width_each_dir, curPosX, curPosY);
-		
-		// new region이 완료되었는지 체크하고, 완료되지 않았다면 경고문 출력 후 이동 원위치
 
 		state_main_thread = MAIN_THREAD_WAIT;
 		getNeighborList(nbrPosition, curPosX, curPosY);
@@ -423,13 +416,17 @@ int main()
 		dim3 blocksPerGrid_B((int)ceil((float)output_width_each_dir[2] / (float)twid), (int)ceil((float)(g_height / 2) / (float)thei)); // set a shape of the threads-per-block
 		dim3 blocksPerGrid_L((int)ceil((float)output_width_each_dir[3] / (float)twid), (int)ceil((float)(g_height / 2) / (float)thei)); // set a shape of the threads-per-block
 
-		mode = 0;
-
-		rendering << < blocksPerGrid_F, threadsPerBlock, 0, stream_main >> > (u_synthesized_view[0], LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, mode, 0, curPosX, curPosY, g_width, g_height, g_slice_width);
-		rendering << < blocksPerGrid_R, threadsPerBlock, 0, stream_main >> > (u_synthesized_view[1], LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, mode, 1, curPosX, curPosY, g_width, g_height, g_slice_width);
-		rendering << < blocksPerGrid_B, threadsPerBlock, 0, stream_main >> > (u_synthesized_view[2], LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, mode, 2, curPosX, curPosY, g_width, g_height, g_slice_width);
-		rendering << < blocksPerGrid_F, threadsPerBlock, 0, stream_main >> > (u_synthesized_view[0], LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, mode, 0, curPosX, curPosY, g_width, g_height, g_slice_width);
+		rendering << < blocksPerGrid_F, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, 0, mode, 0, curPosX, curPosY, g_width, g_height, g_slice_width);
 		cudaError_t err = cudaStreamSynchronize(stream_main);
+		assert(err == cudaSuccess);
+		rendering << < blocksPerGrid_R, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, output_width_each_dir[0], mode, 1, curPosX, curPosY, g_width, g_height, g_slice_width);
+		err = cudaStreamSynchronize(stream_main);
+		assert(err == cudaSuccess);
+		rendering << < blocksPerGrid_B, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, output_width_each_dir[0] + output_width_each_dir[1], mode, 2, curPosX, curPosY, g_width, g_height, g_slice_width);
+		err = cudaStreamSynchronize(stream_main);
+		assert(err == cudaSuccess);
+		rendering << < blocksPerGrid_L, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, output_width_each_dir[0] + output_width_each_dir[1] + output_width_each_dir[2],mode, 2, curPosX, curPosY, g_width, g_height, g_slice_width);
+		err = cudaStreamSynchronize(stream_main);
 		assert(err == cudaSuccess);
 
 		state_main_thread = MAIN_THREAD_COMPLETE;
@@ -439,22 +436,14 @@ int main()
 		reused_per_total.push_back(hitrate);
 		field_mode.push_back(mode);
 		position_trace.push_back(std::make_pair(curPosX, curPosY));
-		printf("%dx%d image synthesized\n", output_width_each_dir[0] + output_width_each_dir[1] + output_width_each_dir[2] + output_width_each_dir[3], g_height);
+		int output_width = output_width_each_dir[0] + output_width_each_dir[1] + output_width_each_dir[2] + output_width_each_dir[3];
+		printf("%dx%d image synthesized\n", output_width, g_height);
 		printf("[%d] %f ms, Cached Slices: %d(Odd), %d(Even)\n", mode, stop, LRU.size(ODD), LRU.size(EVEN));
 
 #if LOGGER==1
-		// FILE* fv = fopen(("./result/view/Front/[" + std::to_string(output_width_each_dir[0]) + "x" + std::to_string(g_height) + "] " + IntToFormattedString(curPosX) + "_" + IntToFormattedString(curPosY) + ".bgr").c_str(), "wb");
-		// fwrite(u_synthesized_view[FRONT], 1, 4500 * g_height * 3, fv);
-		// fclose(fv);
-		// fv = fopen(("./result/view/Right/[" + std::to_string(output_width_each_dir[1]) + "x" + std::to_string(g_height) + "] " + IntToFormattedString(curPosX) + "_" + IntToFormattedString(curPosY) + ".bgr").c_str(), "wb");
-		// fwrite(u_synthesized_view[RIGHT], 1, 4500 * g_height * 3, fv);
-		// fclose(fv);
-		// fv = fopen(("./result/view/Back/[" + std::to_string(output_width_each_dir[2]) + "x" + std::to_string(g_height) + "] " + IntToFormattedString(curPosX) + "_" + IntToFormattedString(curPosY) + ".bgr").c_str(), "wb");
-		// fwrite(u_synthesized_view[BACK], 1, 4500 * g_height * 3, fv);
-		// fclose(fv);
-		// fv = fopen(("./result/view/Left/[" + std::to_string(output_width_each_dir[3]) + "x" + std::to_string(g_height) + "] " + IntToFormattedString(curPosX) + "_" + IntToFormattedString(curPosY) + ".bgr").c_str(), "wb");
-		// fwrite(u_synthesized_view[LEFT], 1, 4500 * g_height * 3, fv);
-		// fclose(fv);
+		FILE* fv = fopen(("./result/view/[" + std::to_string(output_width) + "x" + std::to_string(g_height) + "] " + IntToFormattedString(curPosX) + "_" + IntToFormattedString(curPosY) + ".bgr").c_str(), "wb");
+		fwrite(u_synthesized_view, 1, g_output_width * g_height * 3, fv);
+		fclose(fv);
 #endif
 	}
 #if LOGGER==1
@@ -480,10 +469,7 @@ int main()
 		th_readdisk.join();
 	}
 
-	for (int i = 0; i < 4; i++) {
-		free_uint8(u_synthesized_view[i], "unified");
-	}
-	
+	free_uint8(u_synthesized_view, "unified");
 	cudaStreamDestroy(stream_main);
 	cudaStreamDestroy(stream_h2d);
 

@@ -23,7 +23,7 @@
 #define WIDTH 4096
 #define HEIGHT 2048
 #define SLICE_WIDTH 256
-#define OUTPUT_WIDTH 2250
+#define OUTPUT_WIDTH 9000
 #define PI 3.14159274f
 
 const std::string g_directory = "S:/len50/5K/";
@@ -33,7 +33,6 @@ const size_t g_length = LENGTH;
 const size_t g_slice_width = SLICE_WIDTH;
 const size_t g_output_width = OUTPUT_WIDTH;
 const size_t g_slice_size = g_slice_width * g_height * 3;
-const size_t g_LF_window_size = 3;
 
 struct SliceRange
 {

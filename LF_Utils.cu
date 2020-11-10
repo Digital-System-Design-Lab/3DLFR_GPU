@@ -148,14 +148,14 @@ int getKey(int& posX, int& posY)
 
 	switch (c)
 	{
-	case 'w': {			posY--; } break;
-	case 'e': {	posX++;	posY--; } break;
+	case 'x': {			posY--; } break;
+	case 'c': {	posX++;	posY--; } break;
 	case 'd': {	posX++;			} break;
-	case 'c': {	posX++;	posY++;	} break;
-	case 'x': {			posY++; } break;
-	case 'z': {	posX--; posY++; } break;
+	case 'e': {	posX++;	posY++;	} break;
+	case 'w': {			posY++; } break;
+	case 'q': {	posX--; posY++; } break;
 	case 'a': {	posX--; } break;
-	case 'q': {	posX--; posY--; } break;
+	case 'z': {	posX--; posY--; } break;
 	case 27: {	printf("Terminate\n"); return -1;	}
 	default: break;
 	}
