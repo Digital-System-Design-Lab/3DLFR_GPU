@@ -3,6 +3,7 @@
 
 #include "LF_Utils.cuh"
 #include "LFU_Window.h"
+#include "Device_Memory_Manager.cuh"
 
 struct SliceID {
 	int lf_number;
@@ -13,6 +14,7 @@ struct SliceID {
 struct Slice
 {
 	SliceID id;
+	size_t access_number;
 	// INTERLACE_FIELD field;
 	uint8_t* odd_data;
 	uint8_t* even_data;
@@ -22,7 +24,7 @@ struct Slice
 
 class LRUCache {
 public:
-	LRUCache(int num_limit_HashingLF, int num_limit_slice);
+	LRUCache(const size_t& num_limit_HashingLF, const size_t& num_limit_slice);
 	~LRUCache();
 
 	int query_hashmap(const SliceID& id, const INTERLACE_FIELD& field);
@@ -33,6 +35,8 @@ public:
 
 	int synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream, const READ_DISK_THREAD_STATE& read_disk_thread_state);
 	int size(const INTERLACE_FIELD& field);
+
+	bool isFull(const INTERLACE_FIELD& field);
 
 	Slice** hashmap_odd;
 	uint8_t** h_devPtr_hashmap_odd;
@@ -49,12 +53,15 @@ private:
 	Slice* head_even;
 	Slice* tail_even;
 
-	int current_LRU_size_odd;
-	int current_LRU_size_even;
-	int num_limit_slice;
-	int num_limit_HashingLF;
+	size_t current_LRU_size_odd;
+	size_t current_LRU_size_even;
+	size_t num_limit_slice;
+	size_t num_limit_HashingLF;
 
 	std::queue <std::pair<SliceID, uint8_t*>> waiting_slice_odd;
 	std::queue <std::pair<SliceID, uint8_t*>> waiting_slice_even;
+
+	DeviceMemoryManager* dmm_odd;
+	DeviceMemoryManager* dmm_even;
 };
 #endif

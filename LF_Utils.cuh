@@ -20,20 +20,20 @@
 #include <conio.h> // Keyboard input 
 
 #define LENGTH 50
-#define WIDTH 5120
-#define HEIGHT 2560
+#define WIDTH 4096
+#define HEIGHT 2048
 #define SLICE_WIDTH 256
 #define OUTPUT_WIDTH 2250
 #define PI 3.14159274f
 
 const std::string g_directory = "S:/len50/5K/";
-const int g_width = WIDTH;
-const int g_height = HEIGHT;
-const int g_length = LENGTH;
-const int g_slice_width = SLICE_WIDTH;
-const int g_output_width = OUTPUT_WIDTH;
-const int g_slice_size = g_slice_width * g_height * 3;
-const int g_LF_window_size = 3;
+const size_t g_width = WIDTH;
+const size_t g_height = HEIGHT;
+const size_t g_length = LENGTH;
+const size_t g_slice_width = SLICE_WIDTH;
+const size_t g_output_width = OUTPUT_WIDTH;
+const size_t g_slice_size = g_slice_width * g_height * 3;
+const size_t g_LF_window_size = 3;
 
 struct SliceRange
 {
@@ -103,10 +103,11 @@ int find_slice_from_LF(const int& img, const int& slice, bool interlaced = false
 Interlaced_LF* get_LF_from_Window(std::vector<Interlaced_LF>& window, const int& LF_number);
 
 int preRendering(int x, int z, int dir);
-
-int getLFUID(const int& posX, const int& posY);
+void write_rendering_range();
 
 void getLocalPosition(int& localPosX, int& localPosY, const int& curPosX, const int& curPosY);
+
+int getLFUID(const int& posX, const int& posY);
 
 void find_LF_number_BMW(int& front, int& right, int& back, int& left, const int& LFUID);
 
@@ -117,5 +118,9 @@ __device__ int dev_Clamp(int val, int min, int max);
 __device__ float dev_rad2deg(float rad);
 
 __device__ float dev_deg2rad(float deg);
+
+__device__ int dev_getLFUID(const int& posX, const int& posY);
+
+__device__ int dev_find_LF_number_BMW(const int& direction, const int& posX, const int& posY);
 
 #endif

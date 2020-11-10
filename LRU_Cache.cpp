@@ -1,6 +1,6 @@
 #include "LRU_Cache.h"
 
-LRUCache::LRUCache(int num_limit_HashingLF, int num_limit_slice)
+LRUCache::LRUCache(const size_t& num_limit_HashingLF, const size_t& num_limit_slice)
 {
 	this->head_odd = nullptr;
 	this->tail_odd = nullptr;
@@ -39,17 +39,16 @@ LRUCache::LRUCache(int num_limit_HashingLF, int num_limit_slice)
 	} // query를 host hashmap에 한 후, uint8_t* 결과만 d_ hashmap에 동기화
 
 	cudaMalloc((void**)&d_devPtr_hashmap_even, g_width / g_slice_width * g_length * num_limit_HashingLF * sizeof(uint8_t*));
+
+	dmm_odd = new DeviceMemoryManager(num_limit_slice, g_slice_size);
+	dmm_even = new DeviceMemoryManager(num_limit_slice, g_slice_size);
 }
 LRUCache::~LRUCache()
 {
 	while (head_odd != tail_odd)
 	{
 		Slice* tmp = head_odd;
-
-		uint8_t* d_data = h_devPtr_hashmap_odd[this->get_hashmap_location(tmp->id)];
 		h_devPtr_hashmap_odd[this->get_hashmap_location(tmp->id)] = nullptr;
-		cudaFree(d_data);
-
 		head_odd->next->prev = nullptr;
 		head_odd = head_odd->next;
 		delete tmp;
@@ -62,11 +61,7 @@ LRUCache::~LRUCache()
 	while (head_even != tail_even)
 	{
 		Slice* tmp = head_even;
-
-		uint8_t* d_data = h_devPtr_hashmap_even[this->get_hashmap_location(tmp->id)];
 		h_devPtr_hashmap_even[this->get_hashmap_location(tmp->id)] = nullptr;
-		cudaFree(d_data);
-
 		head_even->next->prev = nullptr;
 		head_even = head_even->next;
 		delete tmp;
@@ -75,6 +70,9 @@ LRUCache::~LRUCache()
 	delete[] hashmap_even;
 	cudaFreeHost(h_devPtr_hashmap_even);
 	cudaFree(d_devPtr_hashmap_even);
+
+	dmm_odd->~DeviceMemoryManager();
+	dmm_even->~DeviceMemoryManager();
 }
 
 int LRUCache::size(const INTERLACE_FIELD& field)
@@ -100,7 +98,8 @@ int LRUCache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field
 	uint8_t** d_devPtr_hashmap;
 	Slice** head;
 	Slice** tail;
-	int* current_LRU_size;
+	size_t* current_LRU_size;
+	DeviceMemoryManager* dmm;
 	if (field == ODD) {
 		hashmap = hashmap_odd;
 		h_devPtr_hashmap = h_devPtr_hashmap_odd;
@@ -108,6 +107,7 @@ int LRUCache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field
 		head = &head_odd;
 		tail = &tail_odd;
 		current_LRU_size = &current_LRU_size_odd;
+		dmm = dmm_odd;
 	}
 	else {
 		hashmap = hashmap_even;
@@ -116,6 +116,7 @@ int LRUCache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field
 		head = &head_even;
 		tail = &tail_even;
 		current_LRU_size = &current_LRU_size_even;
+		dmm = dmm_even;
 	}
 
 	int slice_location = query_hashmap(id, field);
@@ -124,15 +125,13 @@ int LRUCache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field
 		if (*current_LRU_size >= num_limit_slice) {
 			// cache full, evict head
 			hashmap[get_hashmap_location((*head)->id)] = nullptr;
-
+			h_devPtr_hashmap[get_hashmap_location((*head)->id)] = nullptr;
+			dmm->return_access_number((*head)->access_number);
+				
 			Slice* tmp = (*head);
 			(*head)->next->prev = nullptr;
 			(*head) = (*head)->next;
 			delete tmp;
-
-			uint8_t* d_tmp = h_devPtr_hashmap[get_hashmap_location((*head)->id)];
-			h_devPtr_hashmap[get_hashmap_location((*head)->id)] = nullptr;
-			cudaFree(d_tmp);
 
 			(*current_LRU_size)--;
 		}
@@ -141,6 +140,7 @@ int LRUCache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field
 		slice->id = id;
 		if (field == ODD) slice->odd_data = data;
 		else slice->even_data = data;
+		slice->access_number = dmm->rent_access_number();
 
 		if ((*head) == nullptr) {
 			// No item in cache
@@ -156,9 +156,10 @@ int LRUCache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field
 			(*tail)->next = nullptr;
 		}
 		hashmap[get_hashmap_location(slice->id)] = slice;
-		uint8_t* d_slice;
-		cudaMalloc((void**)&d_slice, g_slice_size / 2);
-		cudaMemcpy(d_slice, data, g_slice_size / 2, cudaMemcpyHostToDevice); // data 복사
+		uint8_t* d_slice = dmm->get_empty_space(slice->access_number);
+
+		cudaError_t err = cudaMemcpy(d_slice, data, g_slice_size / 2, cudaMemcpyHostToDevice); // data 복사
+		assert(err == cudaSuccess);
 		h_devPtr_hashmap[get_hashmap_location(slice->id)] = d_slice; // hashmap에 저장된 주소공간을 할당 후
 
 		(*current_LRU_size)++;
@@ -192,8 +193,8 @@ void LRUCache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_TH
 	uint8_t** d_devPtr_hashmap;
 	Slice** head;
 	Slice** tail;
-	int* current_LRU_size;
-
+	size_t* current_LRU_size;
+	DeviceMemoryManager* dmm;
 	if (field == ODD) {
 		hashmap = hashmap_odd;
 		h_devPtr_hashmap = h_devPtr_hashmap_odd;
@@ -201,6 +202,7 @@ void LRUCache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_TH
 		head = &head_odd;
 		tail = &tail_odd;
 		current_LRU_size = &current_LRU_size_odd;
+		dmm = dmm_odd;
 	}
 	else {
 		hashmap = hashmap_even;
@@ -209,6 +211,7 @@ void LRUCache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_TH
 		head = &head_even;
 		tail = &tail_even;
 		current_LRU_size = &current_LRU_size_even;
+		dmm = dmm_even;
 	}
 
 	int slice_location = query_hashmap(id, field);
@@ -217,15 +220,13 @@ void LRUCache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_TH
 		if (*current_LRU_size >= num_limit_slice) {
 			// cache full, evict head
 			hashmap[get_hashmap_location((*head)->id)] = nullptr;
+			h_devPtr_hashmap[get_hashmap_location((*head)->id)] = nullptr;
+			dmm->return_access_number((*head)->access_number);
 
 			Slice* tmp = (*head);
 			(*head)->next->prev = nullptr;
 			(*head) = (*head)->next;
 			delete tmp;
-
-			uint8_t* d_tmp = h_devPtr_hashmap[get_hashmap_location((*head)->id)];
-			h_devPtr_hashmap[get_hashmap_location((*head)->id)] = nullptr;
-			cudaFree(d_tmp);
 
 			(*current_LRU_size)--;
 		}
@@ -234,6 +235,7 @@ void LRUCache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_TH
 		slice->id = id;
 		if (field) slice->odd_data = data;
 		else slice->even_data = data;
+		slice->access_number = dmm->rent_access_number();
 
 		if ((*head) == nullptr) {
 			// No item in cache
@@ -250,9 +252,8 @@ void LRUCache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_TH
 		}
 
 		hashmap[get_hashmap_location(slice->id)] = slice;
-		uint8_t* d_slice;
-		cudaError_t err = cudaMalloc((void**)&d_slice, g_slice_size); // slice를 위한 device memory 할당
-		err = cudaMemcpyAsync(d_slice, data, g_slice_size, cudaMemcpyHostToDevice, stream); // data 복사
+		uint8_t* d_slice = dmm->get_empty_space(slice->access_number);
+		cudaError_t err = cudaMemcpyAsync(d_slice, data, g_slice_size, cudaMemcpyHostToDevice, stream); // data 복사
 		p_h2d_thread_state = H2D_THREAD_RUNNING;
 		cudaStreamSynchronize(stream); // this stream must block the host code
 		h_devPtr_hashmap[get_hashmap_location(slice->id)] = d_slice; // hashmap에 저장된 주소공간을 할당 후
@@ -339,4 +340,18 @@ int LRUCache::query_hashmap(const SliceID& id, const INTERLACE_FIELD& field)
 
 	if (hashmap[slice_location] == nullptr) return -1;
 	else return slice_location;
+}
+
+bool LRUCache::isFull(const INTERLACE_FIELD& field)
+{
+	if (field == ODD) {
+		if (this->current_LRU_size_odd < num_limit_slice)
+			return false;
+		else return true;
+	}
+	else {
+		if (this->current_LRU_size_even < num_limit_slice)
+			return false;
+		else return true;
+	}
 }

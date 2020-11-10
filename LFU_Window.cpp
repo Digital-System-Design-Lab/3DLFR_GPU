@@ -1,15 +1,17 @@
 #include "LFU_Window.h"
 
-LFU_Window::LFU_Window(const int& posX, const int& posY, const int& light_field_size)
+LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_field_size)
 {
-	m_pinnedLFU[ODD][FRONT] = alloc_uint8(light_field_size, "pinned");
-	m_pinnedLFU[ODD][RIGHT] = alloc_uint8(light_field_size, "pinned");
-	m_pinnedLFU[ODD][BACK] = alloc_uint8(light_field_size, "pinned");
-	m_pinnedLFU[ODD][LEFT] = alloc_uint8(light_field_size, "pinned");
-	m_pinnedLFU[EVEN][FRONT] = alloc_uint8(light_field_size, "pinned");
-	m_pinnedLFU[EVEN][RIGHT] = alloc_uint8(light_field_size, "pinned");
-	m_pinnedLFU[EVEN][BACK] = alloc_uint8(light_field_size, "pinned");
-	m_pinnedLFU[EVEN][LEFT] = alloc_uint8(light_field_size, "pinned");
+	printf("Allocating pinned memory");
+	for (int i = 0; i < 2; i++)
+	{
+		for (int j = 0; j < 4; j++)
+		{
+			printf(".");
+			m_pinnedLFU[i][j] = alloc_uint8(light_field_size, "pinned");
+		}
+	}
+	printf(" Completed\n");
 
 	int LFUID = getLFUID(posX, posY);
 	int LFUIDs[9];
@@ -24,9 +26,10 @@ LFU_Window::LFU_Window(const int& posX, const int& posY, const int& light_field_
 	LFUIDs[8] = LFUID;
 	construct_window(light_field_size);
 
+	printf("Reading LFs");
 	for (int i = 0; i < 9; i++)
 	{
-		printf("%d\n", i);
+		printf(".");
 
 		int f, r, b, l;
 		find_LF_number_BMW(f, r, b, l, LFUIDs[i]);
@@ -82,7 +85,7 @@ LFU_Window::LFU_Window(const int& posX, const int& posY, const int& light_field_
 	memcpy(m_pinnedLFU[EVEN][LEFT], m_center->LF[LEFT]->even_field, light_field_size);
 	pinned_memory_status = PINNED_LFU_EVEN_AVAILABLE;
 
-	printf("window read completed\n");
+	printf("Completed\n");
 
 	m_center->nbr[N] = &m_LFU[0];
 	m_center->nbr[N]->nbr[S] = m_center;
@@ -126,12 +129,10 @@ LFU_Window::~LFU_Window()
 
 }
 
-void LFU_Window::construct_window(const int& light_field_size)
+void LFU_Window::construct_window(const size_t& light_field_size)
 {
 	for (int i = 0; i < 12; i++)
 	{
-		printf("%d\n", i);
-
 		m_row[i].odd_field = alloc_uint8(light_field_size, "pageable");
 		m_row[i].even_field = nullptr;
 		m_row[i].type = ROW;
@@ -199,7 +200,7 @@ void LFU_Window::construct_window(const int& light_field_size)
 	m_LFU[8].LF[LEFT] = &m_col[4];
 }
 
-void LFU_Window::update_window(const int& prevPosX, const int& prevPosY, const int& curPosX, const int& curPosY, const int& light_field_size, const MAIN_THREAD_STATE& main_thread_state)
+void LFU_Window::update_window(const int& prevPosX, const int& prevPosY, const int& curPosX, const int& curPosY, const size_t& light_field_size, const MAIN_THREAD_STATE& main_thread_state)
 {
 	int prevLFUID = getLFUID(prevPosX, prevPosY);
 	int curLFUID = getLFUID(curPosX, curPosY);
