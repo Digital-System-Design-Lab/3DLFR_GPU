@@ -25,7 +25,7 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 {
 	int tw = blockIdx.x * blockDim.x + threadIdx.x; // blockIdx.x = (int)[0, (out_w - 1)]
 	int th = blockIdx.y * blockDim.y + threadIdx.y; // threadIdx = (int)[0, (g_height - 1)]
-	
+
 	int localPosX = posX % 100 - 50;
 	int localPosY = posY % 100 - 50;
 
@@ -49,20 +49,21 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 	float theta_R = dev_rad2deg(atan2f((1.0f * LFUW / 2 - localPosX), (LFUW / 2 - localPosY)));
 
 	int output_width = (int)((theta_R - theta_L) / 0.04f);
-	
-	if (tw < output_width) {
+
+	if (tw < output_width - 1) {
 		int Y = LFUW / 2;
 
-		float theta_P = theta_L + (0.04 * (float)tw);
-		
-		float b = sqrt(2.0) * LFUW;
-		float xP = (Y - localPosY) * tanf(dev_deg2rad(theta_P)) + localPosX;
+		float theta_P = theta_L + (0.04f * (float)tw);
+
+		float b = sqrt(2.0f) * LFUW;
+		float xP = (float)(Y - localPosY) * tanf(dev_deg2rad(theta_P)) + localPosX;
 
 		float N_dist = sqrt((float)((xP - localPosX) * (xP - localPosX) + (Y - localPosY) * (Y - localPosY))) / b;
 
 		xP /= 2;
 		int P_1 = (int)(roundf(xP + (DATAW >> 1)));
-		if (direction == 1 || direction == 2) {
+		if(direction == 0) {
+//		if (direction == 1 || direction == 2) {
 			P_1 = DATAW - P_1 - 1;
 		}
 		P_1 = dev_Clamp(P_1, 0, DATAW - 1);
@@ -72,12 +73,11 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 		if (direction == 1) U_1 += width >> 2;
 		if (direction == 2) U_1 += width >> 1;
 		if (direction == 3) U_1 -= width >> 2;
-
-		int N_off = (int)(roundf(times * N_dist + 0.5)) >> 1;
-
 		if (U_1 >= width) U_1 = U_1 - width;
 		else if (U_1 < 0) U_1 = U_1 + width;
 		U_1 = dev_Clamp(U_1, 0, width - 1);
+
+		int N_off = (int)(roundf(times * N_dist + 0.5)) >> 1;
 
 		int LF_num = dev_find_LF_number_BMW(direction, posX, posY);
 		int image_num = P_1 % legnth;
@@ -99,16 +99,17 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 
 		int slice = dev_query_hashmap(LF_num, image_num, slice_num, width, legnth, slice_width); // Random access to hashmap
 
-		if (blockIdx.x == 1124) {
-			printf("%d %d %d(%d) %d, %d %d, %d\n", LF_num, image_num, slice_num, U_1, pixel_col, tw, th, slice);
-		}
+		// if (blockIdx.x == 1124) {
+		// 	printf("%d %d %d(%d) %d, %d %d, %d\n", LF_num, image_num, slice_num, U_1, pixel_col, tw, th, slice);
+		// }
+		
+//		if (d_hashmap_odd[slice] == nullptr)
+//			printf("[%d] tw:%d th:%d slice:%d LF:%d img:%d pix:%d slice : %d out_width:%d\n", direction, tw, th, slice, LF_num, image_num, U_1, slice_num, output_width);
+		
 		uint8_t oddpel_ch0;
 		uint8_t oddpel_ch1;
 		uint8_t oddpel_ch2;
-		uint8_t evenpel_ch0 = 0;
-		uint8_t evenpel_ch1 = 0;
-		uint8_t evenpel_ch2 = 0;
-		
+
 		if (direction == 0) {
 			oddpel_ch0 = 255;
 			oddpel_ch1 = 0;
@@ -128,7 +129,27 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 			oddpel_ch0 = 255;
 			oddpel_ch1 = 0;
 			oddpel_ch2 = 255;
+		} 
+		outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 0] = oddpel_ch0; // b 
+		outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 1] = oddpel_ch1; // g 
+		outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 2] = oddpel_ch2; // r 
+
+		if (mode == 1) {
+			uint8_t evenpel_ch0 = 128;
+			uint8_t evenpel_ch1 = 128;
+			uint8_t evenpel_ch2 = 128;
+
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 0] = evenpel_ch0; // b 
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = evenpel_ch1; // g 
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = evenpel_ch2; // r 
 		}
+		else
+		{
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 0] = oddpel_ch0; // b 
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = oddpel_ch1; // g 
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = oddpel_ch2; // r 
+		}
+
 #if 0
 		uint8_t oddpel_ch0 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 0]; // Random access to pixel column
 		uint8_t oddpel_ch1 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 1]; // Random access to pixel column
@@ -141,7 +162,7 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 			uint8_t evenpel_ch0 = d_hashmap_even[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 0]; // Random access to pixel column
 			uint8_t evenpel_ch1 = d_hashmap_even[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 1]; // Random access to pixel column
 			uint8_t evenpel_ch2 = d_hashmap_even[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 2]; // Random access to pixel column
-		
+
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 0] = evenpel_ch0; // b 
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = evenpel_ch1; // g 
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = evenpel_ch2; // r 
@@ -152,8 +173,8 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = oddpel_ch1; // g 
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = oddpel_ch2; // r 
 		}
-	}
 #endif
+	}
 }
 
 void load_slice_set(SliceSet slice_set[][100]) {
@@ -208,7 +229,7 @@ std::pair<size_t, size_t> cache_slice(LRUCache& LRU, const LFU_Window& window, S
 	{
 		for (int slice_num = it->range_begin; slice_num <= it->range_end; slice_num++)
 		{
-			
+
 			SliceID id;
 			id.lf_number = window.m_center->LF[it->direction]->LF_number;
 			id.image_number = it->image_num;
@@ -266,13 +287,10 @@ int cache_slice_in_background(LRUCache& LRU, const LFU_Window& window, SliceSet 
 
 						int slice_location = find_slice_from_LF(id.image_number, id.slice_number, true);
 						if (window.pinned_memory_status == PINNED_LFU_ODD_AVAILABLE) {
-							if (!LRU.isFull(ODD))
 								LRU.put(id, window.m_pinnedLFU[ODD][dir] + slice_location, stream_h2d, thread_state_h2d, ODD);
 						}
 						if (window.pinned_memory_status == PINNED_LFU_EVEN_AVAILABLE) {
-							if (!LRU.isFull(ODD))
 								LRU.put(id, window.m_pinnedLFU[ODD][dir] + slice_location, stream_h2d, thread_state_h2d, ODD);
-							if (!LRU.isFull(EVEN))
 								LRU.put(id, window.m_pinnedLFU[EVEN][dir] + slice_location, stream_h2d, thread_state_h2d, EVEN);
 						}
 					}
@@ -294,7 +312,7 @@ void loop_nbrs_h2d(LRUCache& LRU, const LFU_Window& window, SliceSet slice_set[]
 	bool loop = true;
 	while (loop) {
 		mtx.lock();
-		cache_slice_in_background(LRU, window, slice_set, nbrPosition, stream_h2d, thread_state_h2d, thread_state_main);
+		// cache_slice_in_background(LRU, window, slice_set, nbrPosition, stream_h2d, thread_state_h2d, thread_state_main);
 		mtx.unlock();
 		if (thread_state_main == MAIN_THREAD_TERMINATED) loop = false;
 	}
@@ -304,7 +322,9 @@ void loop_read_disk(LFU_Window& window, const int& prevPosX, const int& prevPosY
 {
 	bool loop = true;
 	while (loop) {
-		window.update_window(prevPosX, prevPosY, curPosX, curPosY, light_field_size, main_thread_state);
+		int ret = window.update_window(prevPosX, prevPosY, curPosX, curPosY, light_field_size, main_thread_state);
+		if (ret < 0)
+			printf("Neighbor LFs read Interrupted\n");
 		if (main_thread_state == MAIN_THREAD_TERMINATED) loop = false;
 	}
 }
@@ -331,13 +351,13 @@ int main()
 {
 	/* Declare */
 	StopWatch sw; // for benchmark
-	const size_t limit_cached_slice = (size_t)ceil((size_t)1.6 * (size_t)1024 * (size_t)1024 * (size_t)1024 / g_slice_size);
+	const size_t limit_cached_slice = 1000; // (size_t)ceil((size_t)2 * (size_t)1024 * (size_t)1024 * (size_t)1024 / g_slice_size);
 	const size_t limit_hashing_LF = 71;
 
 	printf("Input resolution : %dx%dx%d\n", g_width, g_height, g_length);
 	printf("Output resolution : %dx%d\n", g_output_width, g_height);
 	printf("Slice resolution : %dx%d\n", g_slice_width, g_height);
-	printf("Slice Cache Size Limit : %llu items at each field -> %lf MB\n", limit_cached_slice, g_slice_size * limit_cached_slice / 1e6 * 2);
+	printf("Slice Cache Size Limit : %llu items at each field -> %lf MB\n", limit_cached_slice, (double)g_slice_size * (double)limit_cached_slice / (double)(1024 * 1024) * (double)2);
 	printf("Hashing LF Range Limit : %d to %d\n", 0, limit_hashing_LF);
 
 	const size_t light_field_size = g_width * (g_height >> 1) * g_length * 3;
@@ -346,8 +366,8 @@ int main()
 	int localPosY[4];
 	int output_width_each_dir[4];
 
-	int curPosX = 201;
-	int curPosY = 250;
+	int curPosX = 101;
+	int curPosY = 101;
 	int prevPosX = curPosX;
 	int prevPosY = curPosY;
 
@@ -376,9 +396,9 @@ int main()
 	state_main_thread = MAIN_THREAD_INIT;
 	state_h2d_thread = H2D_THREAD_INIT;
 	state_read_thread = READ_DISK_THREAD_NEIGHBOR_LF_READ_COMPLETE;
-	 
+
 	int dir = 0;
-	
+
 	// for result analysis
 	std::vector<double> time_end_to_end;
 	std::vector<std::pair<size_t, size_t>> reused_per_total;
@@ -397,6 +417,8 @@ int main()
 		prevPosX = curPosX;
 		prevPosY = curPosY;
 		curPosX++;
+		// curPosY++;
+
 		curPosX = clamp(curPosX, 101, 499);
 		curPosY = clamp(curPosY, 101, 399);
 		set_rendering_range(localPosX, localPosY, output_width_each_dir, curPosX, curPosY);

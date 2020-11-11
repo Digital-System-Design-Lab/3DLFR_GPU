@@ -16,7 +16,7 @@ class LFU_Window {
 public:
 	LFU_Window(const int& posX, const int& posY, const size_t& light_field_size);
 	~LFU_Window();
-	void update_window(const int& prevPosX, const int& prevPosY, const int& curPosX, const int& curPosY, const size_t& light_field_size, const MAIN_THREAD_STATE& main_thread_state);
+	int update_window(const int& prevPosX, const int& prevPosY, const int& curPosX, const int& curPosY, const size_t& light_field_size, const MAIN_THREAD_STATE& main_thread_state);
 
 	LFU* m_center;
 	uint8_t* m_pinnedLFU[2][4];

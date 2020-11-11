@@ -380,12 +380,12 @@ __device__ float dev_deg2rad(float deg)
 	return (deg * 3.14159274f / 180.0f);
 }
 
-__device__ int dev_getLFUID(int posX, int posY)
+__device__ int dev_getLFUID(const int& posX, const int& posY)
 {
 	return 5 * (posX / 100) + (posY / 100);
 }
 
-__device__ int dev_find_LF_number_BMW(int direction, int posX, int posY)
+__device__ int dev_find_LF_number_BMW(const int& direction, const int& posX, const int& posY)
 {
 	int LFUID = dev_getLFUID(posX, posY);
 

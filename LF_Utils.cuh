@@ -32,7 +32,7 @@ const size_t g_height = HEIGHT;
 const size_t g_length = LENGTH;
 const size_t g_slice_width = SLICE_WIDTH;
 const size_t g_output_width = OUTPUT_WIDTH;
-const size_t g_slice_size = g_slice_width * (g_height >> 1) * 3;
+const size_t g_slice_size = g_slice_width * g_height * 3;
 
 struct SliceRange
 {
@@ -118,8 +118,8 @@ __device__ float dev_rad2deg(float rad);
 
 __device__ float dev_deg2rad(float deg);
 
-__device__ int dev_getLFUID(int posX, int posY);
+__device__ int dev_getLFUID(const int& posX, const int& posY);
 
-__device__ int dev_find_LF_number_BMW(int direction, int posX, int posY);
+__device__ int dev_find_LF_number_BMW(const int& direction, const int& posX, const int& posY);
 
 #endif
