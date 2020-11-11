@@ -65,26 +65,16 @@ LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_fie
 
 LFU_Window::~LFU_Window()
 {
-	for (int i = 0; i < 12; i++)
-	{
+	for (int i = 0; i < 12; i++) {
 		free_uint8(m_row[i].odd_field, "pageable");
 		free_uint8(m_col[i].odd_field, "pageable");
+	}
 
-		if (i == 4 || i == 7)
-		{
-			free_uint8(m_row[i].even_field, "pageable");
-			free_uint8(m_col[i].even_field, "pageable");
+	for (int i = 0; i < 2; i++) {
+		for (int j = 0; j < 4; j++) {
+			free_uint8(m_pinnedLFU[i][j], "pinned");
 		}
 	}
-	free_uint8(m_pinnedLFU[ODD][FRONT], "pinned");
-	free_uint8(m_pinnedLFU[ODD][RIGHT], "pinned");
-	free_uint8(m_pinnedLFU[ODD][BACK], "pinned");
-	free_uint8(m_pinnedLFU[ODD][LEFT], "pinned");
-	free_uint8(m_pinnedLFU[EVEN][FRONT], "pinned");
-	free_uint8(m_pinnedLFU[EVEN][RIGHT], "pinned");
-	free_uint8(m_pinnedLFU[EVEN][BACK], "pinned");
-	free_uint8(m_pinnedLFU[EVEN][LEFT], "pinned");
-
 }
 
 void LFU_Window::construct_window(const size_t& light_field_size)
@@ -448,7 +438,7 @@ void LFU_Window::update_window(const int& prevPosX, const int& prevPosY, const i
 		}
 
 		if (pinned_memory_status == PINNED_LFU_NOT_AVAILABLE) {
-			cudaMemcpy(m_pinnedLFU[ODD][dir], m_center->LF[dir]->odd_field, light_field_size, cudaMemcpyHostToHost);
+			memcpy(m_pinnedLFU[ODD][dir], m_center->LF[dir]->odd_field, light_field_size);
 		}
 		if (dir == 3) {
 			pinned_memory_status = PINNED_LFU_ODD_AVAILABLE;

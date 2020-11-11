@@ -6,25 +6,26 @@
 #include <future> // std::future
 #include <stdlib.h> // size_t
 #include <stdint.h> // uint8_t
+
 #define LOGGER 1
 
-__device__ int dev_find_pixel_location(int img, int w, int h, int g_width, int g_height, int g_slice_width)
+__device__ int dev_find_pixel_location(int img, int w, int h, int width, int height, int slice_width)
 {
-	int slice = w / g_slice_width;
-	int slice_number = w % g_slice_width;
-	return img * g_width * g_height * 3 + slice * g_slice_width * g_height * 3 + slice_number * g_height * 3 + h * 3;
+	int slice = w / slice_width;
+	int slice_number = w % slice_width;
+	return img * width * height * 3 + slice * slice_width * height * 3 + slice_number * height * 3 + h * 3;
 }
 
-__device__ int dev_query_hashmap(const int& lf, const int& img, const int& slice)
+__device__ int dev_query_hashmap(int lf, int img, int slice, int width, int length, int slice_width)
 {
-	return lf * (g_width / g_slice_width) * g_length + img * (g_width / g_slice_width) + slice;
+	return lf * (width / slice_width) * length + img * (width / slice_width) + slice;
 }
 
-__global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** d_hashmap_even, int offset, int mode, int direction, int posX, int posY, int g_width, int g_height, int g_slice_width, float fov = 90.0f, float times = 270.0f)
+__global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** d_hashmap_even, int offset, int mode, int direction, int posX, int posY, int width, int height, int legnth, int slice_width, float fov = 90.0f, float times = 270.0f)
 {
 	int tw = blockIdx.x * blockDim.x + threadIdx.x; // blockIdx.x = (int)[0, (out_w - 1)]
 	int th = blockIdx.y * blockDim.y + threadIdx.y; // threadIdx = (int)[0, (g_height - 1)]
-
+	
 	int localPosX = posX % 100 - 50;
 	int localPosY = posY % 100 - 50;
 
@@ -55,7 +56,7 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 		float theta_P = theta_L + (0.04 * (float)tw);
 		
 		float b = sqrt(2.0) * LFUW;
-		float xP = (Y - localPosY) * __tanf(dev_deg2rad(theta_P)) + localPosX;
+		float xP = (Y - localPosY) * tanf(dev_deg2rad(theta_P)) + localPosX;
 
 		float N_dist = sqrt((float)((xP - localPosX) * (xP - localPosX) + (Y - localPosY) * (Y - localPosY))) / b;
 
@@ -66,50 +67,80 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 		}
 		P_1 = dev_Clamp(P_1, 0, DATAW - 1);
 
-		float U = (theta_P * (1.0f / 180.0f)) * (WIDTH >> 1) + (WIDTH >> 1);
+		float U = (theta_P * (1.0f / 180.0f)) * (width >> 1) + (width >> 1);
 		int U_1 = (int)(roundf(U));
-		if (direction == 1) U_1 += WIDTH >> 2;
-		if (direction == 2) U_1 += WIDTH >> 1;
-		if (direction == 3) U_1 -= WIDTH >> 2;
+		if (direction == 1) U_1 += width >> 2;
+		if (direction == 2) U_1 += width >> 1;
+		if (direction == 3) U_1 -= width >> 2;
 
 		int N_off = (int)(roundf(times * N_dist + 0.5)) >> 1;
 
-		if (U_1 >= WIDTH) U_1 = U_1 - WIDTH;
-		else if (U_1 < 0) U_1 = U_1 + WIDTH;
-		U_1 = dev_Clamp(U_1, 0, WIDTH - 1);
+		if (U_1 >= width) U_1 = U_1 - width;
+		else if (U_1 < 0) U_1 = U_1 + width;
+		U_1 = dev_Clamp(U_1, 0, width - 1);
 
 		int LF_num = dev_find_LF_number_BMW(direction, posX, posY);
-		int image_num = P_1 % LENGTH;
+		int image_num = P_1 % legnth;
 		int slice_num = U_1 / g_slice_width;
 		int pixel_col = U_1 % g_slice_width;
 
-		float N_H_r = (float)(HEIGHT + N_off) / HEIGHT;
+		float N_H_r = (float)(HEIGHT + N_off) / height;
 
-		float h_n = (th - HEIGHT / 2) * N_H_r + HEIGHT / 2;
+		float h_n = (th - height / 2) * N_H_r + height / 2;
 
 		if (h_n < 0)
 			h_n = (-1 * h_n) - 1;
-		else if (h_n > HEIGHT - 1)
-			h_n = HEIGHT - ((h_n - HEIGHT) - 1);
+		else if (h_n > height - 1)
+			h_n = height - ((h_n - height) - 1);
 
 		int H_1 = (int)(roundf(h_n));
-		H_1 = dev_Clamp(H_1, 0, HEIGHT - 1);
+		H_1 = dev_Clamp(H_1, 0, height - 1);
 		float H_r = h_n - H_1;
 
-		int slice = dev_query_hashmap(LF_num, image_num, slice_num); // Random access to hashmap
-		// printf("%d %d %d(%d) %d, %d %d, %d\n", LF_num, image_num, slice_num, U_1, pixel_col, tw, th, slice);
+		int slice = dev_query_hashmap(LF_num, image_num, slice_num, width, legnth, slice_width); // Random access to hashmap
+
+		if (blockIdx.x == 1124) {
+			printf("%d %d %d(%d) %d, %d %d, %d\n", LF_num, image_num, slice_num, U_1, pixel_col, tw, th, slice);
+		}
+		uint8_t oddpel_ch0;
+		uint8_t oddpel_ch1;
+		uint8_t oddpel_ch2;
+		uint8_t evenpel_ch0 = 0;
+		uint8_t evenpel_ch1 = 0;
+		uint8_t evenpel_ch2 = 0;
 		
-		uint8_t oddpel_ch0 = d_hashmap_odd[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 0]; // Random access to pixel column
-		uint8_t oddpel_ch1 = d_hashmap_odd[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 1]; // Random access to pixel column
-		uint8_t oddpel_ch2 = d_hashmap_odd[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 2]; // Random access to pixel column
+		if (direction == 0) {
+			oddpel_ch0 = 255;
+			oddpel_ch1 = 0;
+			oddpel_ch2 = 0;
+		}
+		else if (direction == 1) {
+			oddpel_ch0 = 0;
+			oddpel_ch1 = 255;
+			oddpel_ch2 = 0;
+		}
+		else if (direction == 2) {
+			oddpel_ch0 = 0;
+			oddpel_ch1 = 0;
+			oddpel_ch2 = 255;
+		}
+		else {
+			oddpel_ch0 = 255;
+			oddpel_ch1 = 0;
+			oddpel_ch2 = 255;
+		}
+#if 0
+		uint8_t oddpel_ch0 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 0]; // Random access to pixel column
+		uint8_t oddpel_ch1 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 1]; // Random access to pixel column
+		uint8_t oddpel_ch2 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 2]; // Random access to pixel column
 		outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 0] = oddpel_ch0; // b 
 		outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 1] = oddpel_ch1; // g 
 		outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 2] = oddpel_ch2; // r 
 
 		if (mode == 1) {
-			uint8_t evenpel_ch0 = d_hashmap_even[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 0]; // Random access to pixel column
-			uint8_t evenpel_ch1 = d_hashmap_even[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 1]; // Random access to pixel column
-			uint8_t evenpel_ch2 = d_hashmap_even[slice][(pixel_col * g_height / 2) * 3 + H_1 * 3 + 2]; // Random access to pixel column
+			uint8_t evenpel_ch0 = d_hashmap_even[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 0]; // Random access to pixel column
+			uint8_t evenpel_ch1 = d_hashmap_even[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 1]; // Random access to pixel column
+			uint8_t evenpel_ch2 = d_hashmap_even[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 2]; // Random access to pixel column
 		
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 0] = evenpel_ch0; // b 
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = evenpel_ch1; // g 
@@ -122,6 +153,7 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = oddpel_ch2; // r 
 		}
 	}
+#endif
 }
 
 void load_slice_set(SliceSet slice_set[][100]) {
@@ -305,17 +337,17 @@ int main()
 	printf("Input resolution : %dx%dx%d\n", g_width, g_height, g_length);
 	printf("Output resolution : %dx%d\n", g_output_width, g_height);
 	printf("Slice resolution : %dx%d\n", g_slice_width, g_height);
-	printf("Slice Cache Size Limit : %llu items -> %lf MB\n", limit_cached_slice, g_slice_size * limit_cached_slice / 1e6 * 2);
+	printf("Slice Cache Size Limit : %llu items at each field -> %lf MB\n", limit_cached_slice, g_slice_size * limit_cached_slice / 1e6 * 2);
 	printf("Hashing LF Range Limit : %d to %d\n", 0, limit_hashing_LF);
 
-	const size_t light_field_size = g_width * g_height * g_length * 3 / 2;
+	const size_t light_field_size = g_width * (g_height >> 1) * g_length * 3;
 
 	int localPosX[4];
 	int localPosY[4];
 	int output_width_each_dir[4];
 
 	int curPosX = 201;
-	int curPosY = 201;
+	int curPosY = 250;
 	int prevPosX = curPosX;
 	int prevPosY = curPosY;
 
@@ -358,31 +390,21 @@ int main()
 	std::thread th_h2d(loop_nbrs_h2d, std::ref(LRU), std::ref(window), slice_set, std::ref(nbrPosition), stream_h2d, std::ref(state_h2d_thread), std::ref(state_main_thread), std::ref(mtx));
 	std::thread th_readdisk(loop_read_disk, std::ref(window), std::ref(prevPosX), std::ref(prevPosY), std::ref(curPosX), std::ref(curPosY), std::ref(light_field_size), std::ref(state_read_thread), std::ref(state_main_thread));
 
-	while (1) {
-#if 0 // AUTO MOVE
-		if (dir % 3 == 0)
-		{
-			// curPosX--;  // DDZ
-			// curPosY++;  // DDZ
-			curPosX++;  // D
-			// curPosY++;  // X 
-			// curPosX++;  // WWD
-		}
-		else
-		{
-			// curPosX++;  // DDZ
-			curPosX++;  // D
-			// curPosY++;  // X
-			// curPosY--;  // WWD
-		}
-		dir++;
+	int iter = 0;
 
+	while (1) {
+#if 1 // AUTO MOVE
+		prevPosX = curPosX;
+		prevPosY = curPosY;
+		curPosX++;
+		curPosX = clamp(curPosX, 101, 499);
+		curPosY = clamp(curPosY, 101, 399);
+		set_rendering_range(localPosX, localPosY, output_width_each_dir, curPosX, curPosY);
 		printf("\tPosition(%d, %d)\n", curPosX, curPosY);
 		state_main_thread = MAIN_THREAD_WAIT;
 		getNeighborList(nbrPosition, curPosX, curPosY);
-		if (curPosY > 24) {
-			break;
-		}
+		iter++;
+		if (iter == 299 || curPosX == 499 || curPosY == 399) break;
 #else
 		prevPosX = curPosX;
 		prevPosY = curPosY;
@@ -416,17 +438,11 @@ int main()
 		dim3 blocksPerGrid_B((int)ceil((float)output_width_each_dir[2] / (float)twid), (int)ceil((float)(g_height / 2) / (float)thei)); // set a shape of the threads-per-block
 		dim3 blocksPerGrid_L((int)ceil((float)output_width_each_dir[3] / (float)twid), (int)ceil((float)(g_height / 2) / (float)thei)); // set a shape of the threads-per-block
 
-		rendering << < blocksPerGrid_F, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, 0, mode, 0, curPosX, curPosY, g_width, g_height, g_slice_width);
+		rendering << < blocksPerGrid_F, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, 0, mode, 0, curPosX, curPosY, WIDTH, HEIGHT, LENGTH, SLICE_WIDTH);
+		rendering << < blocksPerGrid_R, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, output_width_each_dir[0], mode, 1, curPosX, curPosY, WIDTH, HEIGHT, LENGTH, SLICE_WIDTH);
+		rendering << < blocksPerGrid_B, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, output_width_each_dir[0] + output_width_each_dir[1], mode, 2, curPosX, curPosY, WIDTH, HEIGHT, LENGTH, SLICE_WIDTH);
+		rendering << < blocksPerGrid_L, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, output_width_each_dir[0] + output_width_each_dir[1] + output_width_each_dir[2], mode, 3, curPosX, curPosY, WIDTH, HEIGHT, LENGTH, SLICE_WIDTH);
 		cudaError_t err = cudaStreamSynchronize(stream_main);
-		assert(err == cudaSuccess);
-		rendering << < blocksPerGrid_R, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, output_width_each_dir[0], mode, 1, curPosX, curPosY, g_width, g_height, g_slice_width);
-		err = cudaStreamSynchronize(stream_main);
-		assert(err == cudaSuccess);
-		rendering << < blocksPerGrid_B, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, output_width_each_dir[0] + output_width_each_dir[1], mode, 2, curPosX, curPosY, g_width, g_height, g_slice_width);
-		err = cudaStreamSynchronize(stream_main);
-		assert(err == cudaSuccess);
-		rendering << < blocksPerGrid_L, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, output_width_each_dir[0] + output_width_each_dir[1] + output_width_each_dir[2],mode, 2, curPosX, curPosY, g_width, g_height, g_slice_width);
-		err = cudaStreamSynchronize(stream_main);
 		assert(err == cudaSuccess);
 
 		state_main_thread = MAIN_THREAD_COMPLETE;

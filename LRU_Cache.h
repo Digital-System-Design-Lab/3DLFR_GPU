@@ -34,7 +34,7 @@ public:
 	void put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_THREAD_STATE& p_h2d_thread_state, const INTERLACE_FIELD& field); // for Worker thread
 
 	int synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream, const READ_DISK_THREAD_STATE& read_disk_thread_state);
-	int size(const INTERLACE_FIELD& field);
+	size_t size(const INTERLACE_FIELD& field);
 
 	bool isFull(const INTERLACE_FIELD& field);
 

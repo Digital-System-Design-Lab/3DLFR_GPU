@@ -1,6 +1,6 @@
 #include "LRU_Cache.h"
 
-LRUCache::LRUCache(const size_t& num_limit_HashingLF, const size_t& num_limit_slice)
+LRUCache::LRUCache (const size_t& num_limit_HashingLF, const size_t& num_limit_slice) // number of LFs considering,  number of maximum items of each odd/even field
 {
 	this->head_odd = nullptr;
 	this->tail_odd = nullptr;
@@ -75,7 +75,7 @@ LRUCache::~LRUCache()
 	dmm_even->~DeviceMemoryManager();
 }
 
-int LRUCache::size(const INTERLACE_FIELD& field)
+size_t LRUCache::size(const INTERLACE_FIELD& field)
 {
 	if (field == ODD) return current_LRU_size_odd;
 	else return current_LRU_size_even;
@@ -124,8 +124,8 @@ int LRUCache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field
 	{
 		if (*current_LRU_size >= num_limit_slice) {
 			// cache full, evict head
-			hashmap[get_hashmap_location((*head)->id)] = nullptr;
-			h_devPtr_hashmap[get_hashmap_location((*head)->id)] = nullptr;
+			hashmap[get_hashmap_location((*head)->id)] = nullptr; // remove slice in hashmap
+			h_devPtr_hashmap[get_hashmap_location((*head)->id)] = nullptr; // remove device slice address in hashmap
 			dmm->return_access_number((*head)->access_number);
 				
 			Slice* tmp = (*head);
@@ -155,12 +155,12 @@ int LRUCache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field
 			(*tail) = slice;
 			(*tail)->next = nullptr;
 		}
-		hashmap[get_hashmap_location(slice->id)] = slice;
 		uint8_t* d_slice = dmm->get_empty_space(slice->access_number);
 
 		cudaError_t err = cudaMemcpy(d_slice, data, g_slice_size / 2, cudaMemcpyHostToDevice); // data 복사
 		assert(err == cudaSuccess);
-		h_devPtr_hashmap[get_hashmap_location(slice->id)] = d_slice; // hashmap에 저장된 주소공간을 할당 후
+		hashmap[get_hashmap_location(slice->id)] = slice; // Add host slice in hashmap
+		h_devPtr_hashmap[get_hashmap_location(slice->id)] = d_slice; // Add device slice address in hashmap
 
 		(*current_LRU_size)++;
 
@@ -251,12 +251,15 @@ void LRUCache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_TH
 			(*tail)->next = nullptr;
 		}
 
-		hashmap[get_hashmap_location(slice->id)] = slice;
 		uint8_t* d_slice = dmm->get_empty_space(slice->access_number);
-		cudaError_t err = cudaMemcpyAsync(d_slice, data, g_slice_size, cudaMemcpyHostToDevice, stream); // data 복사
+		cudaError_t err = cudaMemcpyAsync(d_slice, data, g_slice_size, cudaMemcpyHostToDevice, stream); 
+		assert(err == cudaSuccess);
 		p_h2d_thread_state = H2D_THREAD_RUNNING;
-		cudaStreamSynchronize(stream); // this stream must block the host code
-		h_devPtr_hashmap[get_hashmap_location(slice->id)] = d_slice; // hashmap에 저장된 주소공간을 할당 후
+		err = cudaStreamSynchronize(stream); // this stream must block the host code
+		assert(err == cudaSuccess);
+
+		hashmap[get_hashmap_location(slice->id)] = slice;
+		h_devPtr_hashmap[get_hashmap_location(slice->id)] = d_slice; 
 
 		(*current_LRU_size)++;
 		p_h2d_thread_state = H2D_THREAD_WAIT;
@@ -293,7 +296,15 @@ int LRUCache::synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream, 
 	}
 	cudaError_t err = cudaMemcpyAsync(d_devPtr_hashmap_odd, h_devPtr_hashmap_odd, g_width / g_slice_width * g_length * num_limit_HashingLF * sizeof(uint8_t*), cudaMemcpyHostToDevice, stream);
 	assert(err == cudaSuccess);
-	cudaStreamSynchronize(stream);
+	err = cudaStreamSynchronize(stream);
+	assert(err == cudaSuccess);
+
+	// while (1) {
+	// 	if (window.pinned_memory_status == PINNED_LFU_EVEN_AVAILABLE) 
+	// 		break;
+	// 	else
+	// 		printf("pinned memory state : %d\n", window.pinned_memory_status);
+	// }
 
 	if (window.pinned_memory_status == PINNED_LFU_EVEN_AVAILABLE) {
 		while (!waiting_slice_even.empty())
@@ -305,8 +316,8 @@ int LRUCache::synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream, 
 		}
 		cudaError_t err = cudaMemcpyAsync(d_devPtr_hashmap_even, h_devPtr_hashmap_even, g_width / g_slice_width * g_length * num_limit_HashingLF * sizeof(uint8_t*), cudaMemcpyHostToDevice, stream);
 		assert(err == cudaSuccess);
-		cudaStreamSynchronize(stream);
-
+		err = cudaStreamSynchronize(stream);
+		assert(err == cudaSuccess);
 		return 1;
 	}
 	else return 0;
