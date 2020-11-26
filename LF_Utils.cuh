@@ -26,7 +26,6 @@
 #define OUTPUT_WIDTH 9000
 #define PI 3.14159274f
 
-const std::string g_directory = "S:/len50/5K/";
 const size_t g_width = WIDTH;
 const size_t g_height = HEIGHT;
 const size_t g_length = LENGTH;
@@ -71,7 +70,7 @@ uint8_t* alloc_uint8(int size, std::string alloc_type);
 
 void free_uint8(uint8_t* buf, std::string alloc_type);
 
-int read_uint8(uint8_t* buf, std::string filename, const INTERLACE_FIELD& field, int size = -1);
+int read_uint8(uint8_t* buf, std::string filename, int size = -1);
 
 int write_uint8(uint8_t* buf, std::string filename, int size = -1);
 
@@ -102,6 +101,7 @@ int find_slice_from_LF(const int& img, const int& slice, bool interlaced = false
 Interlaced_LF* get_LF_from_Window(std::vector<Interlaced_LF>& window, const int& LF_number);
 
 int preRendering(int x, int z, int dir);
+
 void write_rendering_range();
 
 void getLocalPosition(int& localPosX, int& localPosY, const int& curPosX, const int& curPosY);
@@ -109,6 +109,8 @@ void getLocalPosition(int& localPosX, int& localPosY, const int& curPosX, const 
 int getLFUID(const int& posX, const int& posY);
 
 void find_LF_number_BMW(int& front, int& right, int& back, int& left, const int& LFUID);
+
+void constructLF_interlace();
 
 __device__ int dev_SignBitMasking(int l, int r);
 

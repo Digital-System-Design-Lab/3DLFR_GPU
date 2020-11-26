@@ -36,15 +36,10 @@ void free_uint8(uint8_t* buf, std::string alloc_type) {
 	else exit(1);
 }
 
-int read_uint8(uint8_t* buf, std::string filename, const INTERLACE_FIELD& field, int size)
+int read_uint8(uint8_t* buf, std::string filename, int size)
 {
 	int fd;
 	int ret;
-
-	if (field == ODD)
-		filename += "_odd.bgr";
-	else
-		filename += "_even.bgr";
 
 	fd = open(filename.c_str(), O_RDONLY | O_BINARY);
 	ret = fd;
@@ -161,7 +156,7 @@ int getKey(int& posX, int& posY)
 	}
 
 	posX = clamp(posX, 101, 499);
-	posY = clamp(posY, 101, 399);
+	posY = clamp(posY, 101, 5499);
 
 	printf("%d, %d\n", posX, posY);
 
@@ -346,17 +341,118 @@ int getLFUID(const int& posX, const int& posY)
 }
 
 void find_LF_number_BMW(int& front, int& right, int& back, int& left, const int& LFUID)
-{ // 5600 x 600 BMW dataset
+{ // 56x6 LFU
 	left = LFUID;
-	right = left + 5;
-	front = 64 - (LFUID / 5) - 6 * (LFUID % 5);
-	back = front + 6;
+	right = left + 56;
+	back = (LFUID / 56) + (6 * (LFUID % 56));
+	front = back + 6;
 }
 
 void getLocalPosition(int& localPosX, int& localPosY, const int& curPosX, const int& curPosY)
 {
 	localPosX = curPosX % 100 - 50;
 	localPosY = curPosY % 100 - 50;
+}
+
+void constructLF_interlace() { // BMW LF configuration.xlsx 참고
+/*
+	unsigned char* LF_odd = new unsigned char[HEIGTH*WIDTH / 2 * 3];
+	unsigned char* LF_even = new unsigned char[HEIGTH*WIDTH / 2 * 3];
+	char OUT_FILE_odd[128];
+	char OUT_FILE_even[128];
+	char LF_FILE[128];
+	//char LF_FILE[100] = "LFU360/191020/Asite/Row10/0001.jpg";
+	int N = 50;
+	FILE* fp_odd;
+	FILE* fp_even;
+
+	for (int col = 1; col <= 392; col++)
+	{
+		//sprintf_s(OUT_FILE, sizeof(OUT_FILE), "LFU360/191025_output/Row%d.LF", count);
+		sprintf_s(OUT_FILE_odd, sizeof(OUT_FILE_odd), "E:/BMW_4K/Column%d_odd.bgr", col - 1);
+		sprintf_s(OUT_FILE_even, sizeof(OUT_FILE_even), "E:/BMW_4K/Column%d_even.bgr", col - 1);
+		fopen_s(&fp_odd, OUT_FILE_odd, "wb");
+		fopen_s(&fp_even, OUT_FILE_even, "wb");
+		for (int no = 1; no <= N; no++) {
+			if (no < 10)
+			{
+				sprintf_s(LF_FILE, sizeof(LF_FILE), "F:/BMW/Column%d/000%d.jpg", col, no);
+			}
+			else if (no < 100)
+			{
+				sprintf_s(LF_FILE, sizeof(LF_FILE), "F:/BMW/Column%d/00%d.jpg", col, no);
+			}
+			else
+			{
+				sprintf_s(LF_FILE, sizeof(LF_FILE), "F:/BMW/Column%d/0%d.jpg", col, no);
+			}
+			cv::Mat src_img = cv::imread(LF_FILE);
+			cv::Mat img;
+			resize(src_img, img, Size(TARGET_W, TARGET_H));
+
+			for (int w = 0; w < TARGET_W; w++) {
+				for (int h = 0; h < TARGET_H / 2; h++) {
+					LF_odd[w * TARGET_H / 2 * 3 + h * 3 + 0] = img.at<Vec3b>(2 * h, w)[0];
+					LF_odd[w * TARGET_H / 2 * 3 + h * 3 + 1] = img.at<Vec3b>(2 * h, w)[1];
+					LF_odd[w * TARGET_H / 2 * 3 + h * 3 + 2] = img.at<Vec3b>(2 * h, w)[2];
+
+					LF_even[w * TARGET_H / 2 * 3 + h * 3 + 0] = img.at<Vec3b>(2 * h + 1, w)[0];
+					LF_even[w * TARGET_H / 2 * 3 + h * 3 + 1] = img.at<Vec3b>(2 * h + 1, w)[1];
+					LF_even[w * TARGET_H / 2 * 3 + h * 3 + 2] = img.at<Vec3b>(2 * h + 1, w)[2];
+				}
+			}
+			fwrite(LF_odd, 1, TARGET_W* TARGET_H / 2 * 3, fp_odd);
+			fwrite(LF_even, 1, TARGET_W* TARGET_H / 2 * 3, fp_even);
+		}
+		printf("Read col %d IMAGE..\n", col);
+		fclose(fp_odd);
+		fclose(fp_even);
+	}
+
+	for (int row = 1; row <= 342; row++)
+	{
+		int newRowNum = 336 - (6 * ((row - 1) / 6)) + ((row - 1) % 6);
+		//sprintf_s(OUT_FILE, sizeof(OUT_FILE), "LFU360/191025_output/Row%d.LF", count);
+		sprintf_s(OUT_FILE_odd, sizeof(OUT_FILE_odd), "E:/BMW_4K/Row%d_odd.bgr", newRowNum);
+		sprintf_s(OUT_FILE_even, sizeof(OUT_FILE_even), "E:/BMW_4K/Row%d_even.bgr", newRowNum);
+		fopen_s(&fp_odd, OUT_FILE_odd, "wb");
+		fopen_s(&fp_even, OUT_FILE_even, "wb");
+		for (int no = 1; no <= N; no++) {
+			if (no < 10)
+			{
+				sprintf_s(LF_FILE, sizeof(LF_FILE), "F:/BMW/Row%d/000%d.jpg", row, no);
+			}
+			else if (no < 100)
+			{
+				sprintf_s(LF_FILE, sizeof(LF_FILE), "F:/BMW/Row%d/00%d.jpg", row, no);
+			}
+			else
+			{
+				sprintf_s(LF_FILE, sizeof(LF_FILE), "F:/BMW/Row%d/0%d.jpg", row, no);
+			}
+			cv::Mat src_img = cv::imread(LF_FILE);
+			cv::Mat img;
+			resize(src_img, img, Size(TARGET_W, TARGET_H));
+
+			for (int w = 0; w < TARGET_W; w++) {
+				for (int h = 0; h < TARGET_H / 2; h++) {
+					LF_odd[w * TARGET_H / 2 * 3 + h * 3 + 0] = img.at<Vec3b>(2 * h, w)[0];
+					LF_odd[w * TARGET_H / 2 * 3 + h * 3 + 1] = img.at<Vec3b>(2 * h, w)[1];
+					LF_odd[w * TARGET_H / 2 * 3 + h * 3 + 2] = img.at<Vec3b>(2 * h, w)[2];
+
+					LF_even[w * TARGET_H / 2 * 3 + h * 3 + 0] = img.at<Vec3b>(2 * h + 1, w)[0];
+					LF_even[w * TARGET_H / 2 * 3 + h * 3 + 1] = img.at<Vec3b>(2 * h + 1, w)[1];
+					LF_even[w * TARGET_H / 2 * 3 + h * 3 + 2] = img.at<Vec3b>(2 * h + 1, w)[2];
+				}
+			}
+			fwrite(LF_odd, 1, TARGET_W* TARGET_H / 2 * 3, fp_odd);
+			fwrite(LF_even, 1, TARGET_W* TARGET_H / 2 * 3, fp_even);
+		}
+		printf("Read row %d IMAGE..\n", newRowNum);
+		fclose(fp_odd);
+		fclose(fp_even);
+	}
+*/
 }
 
 __device__ int dev_SignBitMasking(int l, int r)
@@ -391,11 +487,11 @@ __device__ int dev_find_LF_number_BMW(const int& direction, const int& posX, con
 
 	switch (direction)
 	{
-	case 0: return 64 - (LFUID / 5) - 6 * (LFUID % 5);
+	case 0: return (LFUID / 56) + (6 * (LFUID % 56)) + 6;
 		break;
-	case 1: return LFUID + 5;
+	case 1: return LFUID + 56;
 		break;
-	case 2: return 64 - (LFUID / 5) - 6 * (LFUID % 5) + 6; 
+	case 2: return (LFUID / 56) + (6 * (LFUID % 56));
 		break;
 	case 3: return LFUID; 
 		break;

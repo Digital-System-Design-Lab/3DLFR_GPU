@@ -1,7 +1,9 @@
 #include "LFU_Window.h"
 
-LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_field_size)
+LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_field_size, const std::string& dir)
 {
+	this->LF_prefix = dir;
+
 	int LFUID = getLFUID(posX, posY);
 	int LFUIDs[9];
 	LFUIDs[N] = LFUID + 1;
@@ -575,7 +577,7 @@ int LFU_Window::update_window(const int& prevPosX, const int& prevPosY, const in
 		}
 
 		if (pinned_memory_status == PINNED_LFU_NOT_AVAILABLE) {
-			cudaMemcpy(m_pinnedLFU[ODD][dir], m_center->LF[dir]->odd_field, light_field_size, cudaMemcpyHostToHost);
+			memcpy(m_pinnedLFU[ODD][dir], m_center->LF[dir]->odd_field, light_field_size);
 		}
 		if (dir == 3) {
 			pinned_memory_status = PINNED_LFU_ODD_AVAILABLE;
@@ -720,4 +722,50 @@ int LFU_Window::update_window(const int& prevPosX, const int& prevPosY, const in
 		return -1; // Interrupt
 
 	return 0;
+}
+
+int LFU_Window::read_uint8(uint8_t* buf, std::string filename, const INTERLACE_FIELD& field, int size = -1) {
+	int fd;
+	int ret;
+	filename = LF_prefix + filename;
+	if (field == ODD) filename += "_odd.bgr";
+	else filename += "_even.bgr";
+
+	fd = open(filename.c_str(), O_RDONLY | O_BINARY);
+	ret = fd;
+	if (ret < 0) {
+		printf("open failed, %s\n", filename.c_str());
+		assert(ret == 0);
+		exit(1);
+	}
+
+	if (size < 0) {
+		if ((ret = lseek(fd, 0, SEEK_END)) < 0) {
+			printf("SEEK_END failed, %s\n", filename.c_str());
+			assert(ret == 0);
+			exit(1);
+		}
+		if ((ret = tell(fd)) < 0) {
+			printf("tell failed, %s\n", filename.c_str());
+			assert(ret == 0);
+			exit(1);
+		}
+		size = ret;
+		if ((ret = lseek(fd, 0, SEEK_SET)) < 0) {
+			printf("SEEK_SET failed, %s\n", filename.c_str());
+			assert(ret == 0);
+			exit(1);
+		}
+	}
+
+	ret = read(fd, buf, sizeof(uint8_t) * size); // x64
+	close(fd);
+
+	if (ret != size) {
+		printf("read failed, %s\n", filename.c_str());
+		assert(ret == size);
+		exit(1);
+	}
+
+	return ret;
 }

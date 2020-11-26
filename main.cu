@@ -21,7 +21,7 @@ __device__ int dev_query_hashmap(int lf, int img, int slice, int width, int leng
 	return lf * (width / slice_width) * length + img * (width / slice_width) + slice;
 }
 
-__global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** d_hashmap_even, int offset, int mode, int direction, int posX, int posY, int width, int height, int legnth, int slice_width, float fov = 90.0f, float times = 270.0f)
+__global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** d_hashmap_even, int offset, int mode, int direction, int posX, int posY, int width, int height, int legnth, int slice_width, float fov = 90.0f, float times = 270.0f)
 {
 	int tw = blockIdx.x * blockDim.x + threadIdx.x; // blockIdx.x = (int)[0, (out_w - 1)]
 	int th = blockIdx.y * blockDim.y + threadIdx.y; // threadIdx = (int)[0, (g_height - 1)]
@@ -44,15 +44,14 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 
 	int LFUW = 100;
 	int DATAW = 50;
+	int Y = LFUW / 2;
 
 	float theta_L = dev_rad2deg(atan2f((-1.0f * LFUW / 2 - localPosX), (LFUW / 2 - localPosY)));
 	float theta_R = dev_rad2deg(atan2f((1.0f * LFUW / 2 - localPosX), (LFUW / 2 - localPosY)));
 
 	int output_width = (int)((theta_R - theta_L) / 0.04f);
 
-	if (tw < output_width - 1) {
-		int Y = LFUW / 2;
-
+	if (tw < output_width) {
 		float theta_P = theta_L + (0.04f * (float)tw);
 
 		float b = sqrt(2.0f) * LFUW;
@@ -106,6 +105,7 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 //		if (d_hashmap_odd[slice] == nullptr)
 //			printf("[%d] tw:%d th:%d slice:%d LF:%d img:%d pix:%d slice : %d out_width:%d\n", direction, tw, th, slice, LF_num, image_num, U_1, slice_num, output_width);
 		
+#if 0
 		uint8_t oddpel_ch0;
 		uint8_t oddpel_ch1;
 		uint8_t oddpel_ch2;
@@ -149,8 +149,8 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = oddpel_ch1; // g 
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = oddpel_ch2; // r 
 		}
-
-#if 0
+#endif 
+#if 1
 		uint8_t oddpel_ch0 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 0]; // Random access to pixel column
 		uint8_t oddpel_ch1 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 1]; // Random access to pixel column
 		uint8_t oddpel_ch2 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 2]; // Random access to pixel column
@@ -177,11 +177,11 @@ __global__ void rendering(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** 
 	}
 }
 
-void load_slice_set(SliceSet slice_set[][100]) {
+void load_slice_set(SliceSet slice_set[][100], std::string prefix) {
 	for (int x = 0; x < 100; x++) {
 		for (int y = 0; y < 100; y++)
 		{
-			std::string fname = "S:/4K/LFU/" + std::to_string(x) + "_" + std::to_string(y) + ".txt";
+			std::string fname = prefix + std::to_string(x) + "_" + std::to_string(y) + ".txt";
 			FILE* fp = fopen(fname.c_str(), "r");
 
 			while (!feof(fp)) {
@@ -238,8 +238,16 @@ std::pair<size_t, size_t> cache_slice(LRUCache& LRU, const LFU_Window& window, S
 			int slice_location = find_slice_from_LF(id.image_number, id.slice_number, true);
 
 			if (window.pinned_memory_status < PINNED_LFU_ODD_AVAILABLE) {
-				LRU.enqueue_wait_slice(id, window.m_pinnedLFU[ODD][it->direction] + slice_location, ODD);
-				LRU.enqueue_wait_slice(id, window.m_pinnedLFU[EVEN][it->direction] + slice_location, EVEN);
+				if (window.m_center->LF[it->direction]->progress == LF_READ_PROGRESS_ODD_FIELD_PREPARED) {
+					LRU.put(id, window.m_center->LF[it->direction]->odd_field + slice_location, ODD);
+				} else if (window.m_center->LF[it->direction]->progress == LF_READ_PROGRESS_EVEN_FIELD_PREPARED) {
+					LRU.put(id, window.m_center->LF[it->direction]->odd_field + slice_location, ODD);
+					LRU.put(id, window.m_center->LF[it->direction]->even_field + slice_location, EVEN);
+				}
+				else {
+					LRU.enqueue_wait_slice(id, window.m_pinnedLFU[ODD][it->direction] + slice_location, ODD);
+					LRU.enqueue_wait_slice(id, window.m_pinnedLFU[EVEN][it->direction] + slice_location, EVEN);
+				}
 			}
 			else if (window.pinned_memory_status == PINNED_LFU_ODD_AVAILABLE) {
 				LRU.put(id, window.m_pinnedLFU[ODD][it->direction] + slice_location, ODD);
@@ -312,7 +320,7 @@ void loop_nbrs_h2d(LRUCache& LRU, const LFU_Window& window, SliceSet slice_set[]
 	bool loop = true;
 	while (loop) {
 		mtx.lock();
-		// cache_slice_in_background(LRU, window, slice_set, nbrPosition, stream_h2d, thread_state_h2d, thread_state_main);
+		cache_slice_in_background(LRU, window, slice_set, nbrPosition, stream_h2d, thread_state_h2d, thread_state_main);
 		mtx.unlock();
 		if (thread_state_main == MAIN_THREAD_TERMINATED) loop = false;
 	}
@@ -352,7 +360,7 @@ int main()
 	/* Declare */
 	StopWatch sw; // for benchmark
 	const size_t limit_cached_slice = 1000; // (size_t)ceil((size_t)2 * (size_t)1024 * (size_t)1024 * (size_t)1024 / g_slice_size);
-	const size_t limit_hashing_LF = 71;
+	const size_t limit_hashing_LF = 392;
 
 	printf("Input resolution : %dx%dx%d\n", g_width, g_height, g_length);
 	printf("Output resolution : %dx%d\n", g_output_width, g_height);
@@ -366,8 +374,8 @@ int main()
 	int localPosY[4];
 	int output_width_each_dir[4];
 
-	int curPosX = 101;
-	int curPosY = 101;
+	int curPosX = 149;
+	int curPosY = 149;
 	int prevPosX = curPosX;
 	int prevPosY = curPosY;
 
@@ -375,7 +383,7 @@ int main()
 
 	/* Initialize */
 	SliceSet slice_set[100][100];
-	load_slice_set(slice_set);
+	load_slice_set(slice_set, "S:/PixelRange/");
 
 	cudaStream_t stream_main, stream_h2d;
 	cudaStreamCreate(&stream_main);
@@ -383,7 +391,7 @@ int main()
 
 	LRUCache LRU(limit_hashing_LF, limit_cached_slice);
 	printf("[MAIN] LRU Cache is created\n");
-	LFU_Window window(curPosX, curPosY, light_field_size);
+	LFU_Window window(curPosX, curPosY, light_field_size, "S:/BMW_4K/");
 	printf("[MAIN] LFU Window is created\n");
 	uint8_t* u_synthesized_view;
 	u_synthesized_view = alloc_uint8(g_output_width * g_height * 3, "unified");
@@ -417,7 +425,7 @@ int main()
 		prevPosX = curPosX;
 		prevPosY = curPosY;
 		curPosX++;
-		// curPosY++;
+		curPosY++;
 
 		curPosX = clamp(curPosX, 101, 499);
 		curPosY = clamp(curPosY, 101, 399);
@@ -455,15 +463,16 @@ int main()
 		dim3 threadsPerBlock(twid, thei);
 		// interlace mode -> block shape : 2250*1280
 
+		// output_width_each_dir --> 각 출력 이미지에서 가질 output width, set_rendering_range 함수를 호출해서 얻는다.
 		dim3 blocksPerGrid_F((int)ceil((float)output_width_each_dir[0] / (float)twid), (int)ceil((float)(g_height / 2) / (float)thei)); // set a shape of the threads-per-block
 		dim3 blocksPerGrid_R((int)ceil((float)output_width_each_dir[1] / (float)twid), (int)ceil((float)(g_height / 2) / (float)thei)); // set a shape of the threads-per-block
 		dim3 blocksPerGrid_B((int)ceil((float)output_width_each_dir[2] / (float)twid), (int)ceil((float)(g_height / 2) / (float)thei)); // set a shape of the threads-per-block
 		dim3 blocksPerGrid_L((int)ceil((float)output_width_each_dir[3] / (float)twid), (int)ceil((float)(g_height / 2) / (float)thei)); // set a shape of the threads-per-block
 
-		rendering << < blocksPerGrid_F, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, 0, mode, 0, curPosX, curPosY, WIDTH, HEIGHT, LENGTH, SLICE_WIDTH);
-		rendering << < blocksPerGrid_R, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, output_width_each_dir[0], mode, 1, curPosX, curPosY, WIDTH, HEIGHT, LENGTH, SLICE_WIDTH);
-		rendering << < blocksPerGrid_B, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, output_width_each_dir[0] + output_width_each_dir[1], mode, 2, curPosX, curPosY, WIDTH, HEIGHT, LENGTH, SLICE_WIDTH);
-		rendering << < blocksPerGrid_L, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, output_width_each_dir[0] + output_width_each_dir[1] + output_width_each_dir[2], mode, 3, curPosX, curPosY, WIDTH, HEIGHT, LENGTH, SLICE_WIDTH);
+		synthesize << < blocksPerGrid_F, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, 0, mode, 0, curPosX, curPosY, WIDTH, HEIGHT, LENGTH, SLICE_WIDTH);
+		synthesize << < blocksPerGrid_R, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, output_width_each_dir[0], mode, 1, curPosX, curPosY, WIDTH, HEIGHT, LENGTH, SLICE_WIDTH);
+		synthesize << < blocksPerGrid_B, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, output_width_each_dir[0] + output_width_each_dir[1], mode, 2, curPosX, curPosY, WIDTH, HEIGHT, LENGTH, SLICE_WIDTH);
+		synthesize << < blocksPerGrid_L, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU.d_devPtr_hashmap_odd, LRU.d_devPtr_hashmap_even, output_width_each_dir[0] + output_width_each_dir[1] + output_width_each_dir[2], mode, 3, curPosX, curPosY, WIDTH, HEIGHT, LENGTH, SLICE_WIDTH);
 		cudaError_t err = cudaStreamSynchronize(stream_main);
 		assert(err == cudaSuccess);
 
