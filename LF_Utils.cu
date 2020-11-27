@@ -187,67 +187,6 @@ std::string FloatToFormattedString(float f)
 		return (std::to_string(f));
 }
 
-
-double differentiation(double prev, double cur, double timespan)
-{
-	return (cur - prev) / timespan;
-}
-
-std::pair<double, double> deadReckoning(std::pair<double, double> a_2, std::pair<double, double> a_1, std::pair<double, double> a0, double framerate, int f)
-{
-	double tf = (double)f / framerate;
-
-	std::pair<double, double> v0;
-	std::pair<double, double> v_1;
-	std::pair<double, double> c0;
-
-	v0 = std::make_pair(differentiation(a_1.first, a0.first, 1.0 / framerate), differentiation(a_1.second, a0.second, 1.0 / framerate));
-	v_1 = std::make_pair(differentiation(a_2.first, a_1.first, 1.0 / framerate), differentiation(a_2.second, a_1.second, 1.0 / framerate));
-	c0 = std::make_pair(differentiation(v_1.first, v0.first, tf), differentiation(v_1.second, v0.second, tf));
-
-	return std::make_pair(a0.first + v0.first * tf + 0.5 * c0.first * tf * tf, a0.second + v0.second * tf + 0.5 * c0.second * tf * tf);;
-}
-
-std::vector<std::pair<double, std::pair<int, int>>> doDeadReckoning(double prevprevPosX, double prevprevPosY, double prevPosX, double prevPosY, double curPosX, double curPosY, double framerate, int pred)
-{
-	std::pair<double, double> prevprevPos = std::make_pair(prevprevPosX, prevprevPosY);
-	std::pair<double, double> prevPos = std::make_pair(prevPosX, prevPosY);
-	std::pair<double, double> curPos = std::make_pair(curPosX, curPosY);
-
-	std::vector<std::pair<double, std::pair<int, int>>> v;
-
-	for (int i = 1; i <= pred; i++)
-	{
-		std::pair<double, double> nextPos = deadReckoning(prevprevPos, prevPos, curPos, framerate, i);
-		nextPos.second = (double)clamp(nextPos.second, 1, 25);
-		v.push_back(std::make_pair(1.0 / pow(2, i), std::make_pair((int)nextPos.first, (int)nextPos.second)));
-		// printf("after-%d frame : %f\n", i, deadReckoning(prevprevPosX, prevPosX, curPosX, 90.0, i));
-	}
-
-	return v;
-}
-
-int find_slice_from_LF(const int& img, const int& slice, bool interlaced)
-{
-	if (!interlaced)
-		return (img * g_width * g_height + slice * g_slice_width * g_height) * 3;
-	else
-		return (img * g_width * g_height + slice * g_slice_width * g_height) * 3 / 2;
-}
-
-
-Interlaced_LF* get_LF_from_Window(std::vector<Interlaced_LF>& window, const int& LF_number)
-{
-	while (1) {
-		for (std::vector<Interlaced_LF>::iterator iter = window.begin(); iter != window.end(); iter++) {
-			if (LF_number == iter->LF_number) {
-				return &*iter;
-			}
-		}
-		// printf("updating window now...\n");
-	}
-}
-
 int preRendering(int x, int z, int dir)
 {	
 	float fov = 90.0f;
@@ -337,14 +276,14 @@ void write_rendering_range()
 
 int getLFUID(const int& posX, const int& posY)
 {
-	return 5 * (posX / 100) + (posY / 100);
+	return 56 * (posX / 100) + (posY / 100);
 }
 
 void find_LF_number_BMW(int& front, int& right, int& back, int& left, const int& LFUID)
 { // 56x6 LFU
 	left = LFUID;
 	right = left + 56;
-	back = (LFUID / 56) + (6 * (LFUID % 56));
+	back = (LFUID / 56) + (6 * (LFUID % 56)) + 392;
 	front = back + 6;
 }
 
@@ -352,6 +291,26 @@ void getLocalPosition(int& localPosX, int& localPosY, const int& curPosX, const 
 {
 	localPosX = curPosX % 100 - 50;
 	localPosY = curPosY % 100 - 50;
+}
+
+void write_bmw_fname_array(std::string path) {
+	FILE* fp = fopen(path.c_str(), "w");
+	fprintf(fp, "std::string BMW_LF[392][4] = \n");
+	fprintf(fp, "{\n");
+	for (int i = 0; i < 392; i++) {
+		fprintf(fp, "\t{\n");
+
+		int f, r, b, l;
+		find_LF_number_BMW(f, r, b, l, i);
+		fprintf(fp, "\t\t\"Row%d\",\n", f);
+		fprintf(fp, "\t\t\"Column%d\",\n", r);
+		fprintf(fp, "\t\t\"Row%d\",\n", b);
+		fprintf(fp, "\t\t\"Column%d\"\n", l);
+		if (i == 391) fprintf(fp, "\t}\n");
+		else fprintf(fp, "\t},\n");
+	}
+	fprintf(fp, "};");
+	fclose(fp);
 }
 
 void constructLF_interlace() { // BMW LF configuration.xlsx 참고
@@ -411,7 +370,7 @@ void constructLF_interlace() { // BMW LF configuration.xlsx 참고
 
 	for (int row = 1; row <= 342; row++)
 	{
-		int newRowNum = 336 - (6 * ((row - 1) / 6)) + ((row - 1) % 6);
+		int newRowNum = 336 - (6 * ((row - 1) / 6)) + ((row - 1) % 6) + 392;
 		//sprintf_s(OUT_FILE, sizeof(OUT_FILE), "LFU360/191025_output/Row%d.LF", count);
 		sprintf_s(OUT_FILE_odd, sizeof(OUT_FILE_odd), "E:/BMW_4K/Row%d_odd.bgr", newRowNum);
 		sprintf_s(OUT_FILE_even, sizeof(OUT_FILE_even), "E:/BMW_4K/Row%d_even.bgr", newRowNum);
@@ -487,11 +446,11 @@ __device__ int dev_find_LF_number_BMW(const int& direction, const int& posX, con
 
 	switch (direction)
 	{
-	case 0: return (LFUID / 56) + (6 * (LFUID % 56)) + 6;
+	case 0: return (LFUID / 56) + (6 * (LFUID % 56)) + 6 + 392;
 		break;
 	case 1: return LFUID + 56;
 		break;
-	case 2: return (LFUID / 56) + (6 * (LFUID % 56));
+	case 2: return (LFUID / 56) + (6 * (LFUID % 56)) + 392;
 		break;
 	case 3: return LFUID; 
 		break;

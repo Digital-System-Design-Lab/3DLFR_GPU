@@ -24,7 +24,7 @@ struct Slice
 
 class LRUCache {
 public:
-	LRUCache(const size_t& num_limit_HashingLF, const size_t& num_limit_slice);
+	LRUCache(const size_t& num_limit_HashingLF, const size_t& num_limit_slice, IO_Config* config);
 	~LRUCache();
 
 	int query_hashmap(const SliceID& id, const INTERLACE_FIELD& field);
@@ -33,7 +33,7 @@ public:
 	int put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field);
 	void put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_THREAD_STATE& p_h2d_thread_state, const INTERLACE_FIELD& field); // for Worker thread
 
-	int synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream, const READ_DISK_THREAD_STATE& read_disk_thread_state);
+	int synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream);
 	int size(const INTERLACE_FIELD& field);
 
 	bool isFull(const INTERLACE_FIELD& field);
@@ -63,5 +63,7 @@ private:
 
 	DeviceMemoryManager* dmm_odd;
 	DeviceMemoryManager* dmm_even;
+
+	IO_Config* io_config;
 };
 #endif

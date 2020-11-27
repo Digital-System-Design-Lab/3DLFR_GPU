@@ -14,6 +14,7 @@ public:
 
 private:
 	int num_of_slice;
+	size_t slice_size;
 	std::vector<size_t> access_number_set;
 };
 

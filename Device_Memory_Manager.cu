@@ -3,9 +3,9 @@
 DeviceMemoryManager::DeviceMemoryManager(const size_t& num_of_slice, const size_t& slice_size)
 {
 	cudaMalloc((void**)&dev_slice_buffer, slice_size * num_of_slice);
-	for (size_t i = 0; i < num_of_slice; i++)
-		access_number_set.push_back(0);
+	access_number_set.resize(num_of_slice);
 	this->num_of_slice = num_of_slice;
+	this->slice_size = slice_size;
 }
 
 DeviceMemoryManager::~DeviceMemoryManager()
@@ -29,5 +29,5 @@ void DeviceMemoryManager::return_access_number(const size_t& num)
 
 uint8_t* DeviceMemoryManager::get_empty_space(const size_t& access_number)
 {
-	return dev_slice_buffer + access_number * g_slice_size;
+	return dev_slice_buffer + access_number * slice_size;
 }

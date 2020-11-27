@@ -26,36 +26,13 @@
 #define OUTPUT_WIDTH 9000
 #define PI 3.14159274f
 
-const size_t g_width = WIDTH;
-const size_t g_height = HEIGHT;
-const size_t g_length = LENGTH;
-const size_t g_slice_width = SLICE_WIDTH;
-const size_t g_output_width = OUTPUT_WIDTH;
-const size_t g_slice_size = g_slice_width * g_height * 3;
-
-struct SliceRange
-{
-	SliceRange(const FOUR_DIRECTION& dir, const int& img, const int& begin, const int& end)
-	{
-		direction = dir;
-		image_num = img;
-		range_begin = begin;
-		range_end = end;
-	}
-	FOUR_DIRECTION direction;
-	int image_num;
-	int range_begin;
-	int range_end;
-};
-
-typedef std::vector<SliceRange> SliceSet;
-
-struct Interlaced_LF {
-	int LF_number;
-	ROW_COL type;
-	uint8_t* odd_field = nullptr;
-	uint8_t* even_field = nullptr;
-	LF_READ_PROGRESS progress = LF_READ_PROGRESS_NOT_PREPARED;
+struct IO_Config {
+	const size_t LF_width = 4096;
+	const size_t LF_height = 2048;
+	const size_t LF_length = 50;
+	const size_t slice_width = 256;
+	const size_t output_width = 9000;
+	const size_t slice_size = slice_width * LF_height * 3;
 };
 
 class StopWatch {
@@ -90,16 +67,6 @@ std::string IntToFormattedString(int n);
 
 std::string FloatToFormattedString(float n);
 
-double differentiation(double prev, double cur, double timespan);
-
-std::pair<double, double> deadReckoning(std::pair<double, double> a_2, std::pair<double, double> a_1, std::pair<double, double> a0, double framerate, int f);
-
-std::vector<std::pair<double, std::pair<int, int>>> doDeadReckoning(double prevprevPosX, double prevprevPosY, double prevPosX, double prevPosY, double curPosX, double curPosY, double framerate, int pred);
-
-int find_slice_from_LF(const int& img, const int& slice, bool interlaced = false);
-
-Interlaced_LF* get_LF_from_Window(std::vector<Interlaced_LF>& window, const int& LF_number);
-
 int preRendering(int x, int z, int dir);
 
 void write_rendering_range();
@@ -111,6 +78,8 @@ int getLFUID(const int& posX, const int& posY);
 void find_LF_number_BMW(int& front, int& right, int& back, int& left, const int& LFUID);
 
 void constructLF_interlace();
+
+void write_bmw_fname_array(std::string path = "./BMW_FilePath.h");
 
 __device__ int dev_SignBitMasking(int l, int r);
 
