@@ -315,8 +315,7 @@ __global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t**
 
 		xP /= 2;
 		int P_1 = (int)(roundf(xP + (DATAW >> 1)));
-		if (direction == 0) {
-			//		if (direction == 1 || direction == 2) {
+		if (direction == 1 || direction == 2) {
 			P_1 = DATAW - P_1 - 1;
 		}
 		P_1 = dev_Clamp(P_1, 0, DATAW - 1);

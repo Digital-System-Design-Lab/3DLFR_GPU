@@ -437,7 +437,7 @@ __device__ float dev_deg2rad(float deg)
 
 __device__ int dev_getLFUID(const int& posX, const int& posY)
 {
-	return 5 * (posX / 100) + (posY / 100);
+	return 56 * (posX / 100) + (posY / 100);
 }
 
 __device__ int dev_find_LF_number_BMW(const int& direction, const int& posX, const int& posY)
