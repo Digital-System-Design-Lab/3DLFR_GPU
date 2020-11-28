@@ -297,12 +297,6 @@ int LRUCache::synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream)
 	assert(err == cudaSuccess);
 	cudaStreamSynchronize(stream);
 
-	while (1) {
-		if (window.pinned_memory_status == PINNED_LFU_EVEN_AVAILABLE)
-			break;
-		else { printf("pinned memory status : %d", window.pinned_memory_status); }
-	}
-
 	if (window.pinned_memory_status == PINNED_LFU_EVEN_AVAILABLE) {
 		while (!waiting_slice_even.empty())
 		{

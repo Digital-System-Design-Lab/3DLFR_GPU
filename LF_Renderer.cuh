@@ -31,7 +31,7 @@ typedef std::vector<SliceRange> SliceSet;
 
 class LF_Renderer {
 public:
-	LF_Renderer(const std::string& pixel_range_path, const std::string& LF_path, const size_t& limit_cache_size = 1000, const size_t& limit_LF = 734, const int& initPosX = 150, const int& initPosY = 150);
+	LF_Renderer(const std::string& pixel_range_path, const std::string& LF_path, const int& initPosX = 150, const int& initPosY = 150, const size_t& limit_cache_size = 1000, const size_t& limit_LF = 734);
 	~LF_Renderer();
 
 	uint8_t* do_rendering(const int& newPosX, const int& newPosY);
