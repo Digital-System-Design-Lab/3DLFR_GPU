@@ -446,7 +446,7 @@ __device__ int dev_find_LF_number_BMW(const int& direction, const int& posX, con
 
 	switch (direction)
 	{
-	case 0: return (LFUID / 56) + (6 * (LFUID % 56)) + 6 + 392;
+	case 0: return (LFUID / 56) + (6 * (LFUID % 56)) + 392 + 6;
 		break;
 	case 1: return LFUID + 56;
 		break;

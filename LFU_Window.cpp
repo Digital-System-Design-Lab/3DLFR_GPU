@@ -7,13 +7,13 @@ LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_fie
 	int LFUID = getLFUID(posX, posY);
 	int LFUIDs[9];
 	LFUIDs[N] = LFUID + 1;
-	LFUIDs[NE] = LFUID + 5 + 1;
-	LFUIDs[E] = LFUID + 5;
-	LFUIDs[SE] = LFUID + 5 - 1;
+	LFUIDs[NE] = LFUID + 56 + 1;
+	LFUIDs[E] = LFUID + 56;
+	LFUIDs[SE] = LFUID + 56 - 1;
 	LFUIDs[S] = LFUID - 1;
-	LFUIDs[SW] = LFUID - 5 - 1;
-	LFUIDs[W] = LFUID - 5;
-	LFUIDs[NW] = LFUID - 5 + 1;
+	LFUIDs[SW] = LFUID - 56 - 1;
+	LFUIDs[W] = LFUID - 56;
+	LFUIDs[NW] = LFUID - 56 + 1;
 	LFUIDs[8] = LFUID;
 	construct_window(light_field_size);
 
