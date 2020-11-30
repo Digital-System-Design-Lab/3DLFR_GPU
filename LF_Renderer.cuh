@@ -10,7 +10,7 @@
 
 __device__ int dev_find_pixel_location(int img, int w, int h, int width, int height, int slice_width);
 __device__ int dev_query_hashmap(int lf, int img, int slice, int width, int length, int slice_width);
-__global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** d_hashmap_even, int offset, int mode, int direction, int posX, int posY, int width, int height, int legnth, int slice_width, float fov = 90.0f, float times = 270.0f);
+__global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** d_hashmap_even, int offset, int mode, int direction, int posX, int posY, int localPosX, int localPosY, int width, int height, int legnth, int slice_width, float fov = 90.0f, float times = 270.0f);
 
 struct SliceRange
 {

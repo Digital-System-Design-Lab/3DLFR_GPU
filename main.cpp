@@ -42,7 +42,6 @@ int main()
 	cv::Mat img = cv::Mat(2048, 9000, CV_8UC3);
 	cv::namedWindow("window", CV_WINDOW_NORMAL);
 	cv::resizeWindow("window", 2250, 512);
-
 	while (1)
 	{
 		uint8_t* synthesized_view = renderer.do_rendering(curPosX, curPosY);

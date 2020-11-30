@@ -78,20 +78,22 @@ uint8_t* LF_Renderer::do_rendering(const int& newPosX, const int& newPosY) {
 
 	cudaMemset(u_synthesized_view, 0, io_config.output_width * io_config.LF_height * 3); // NOTE :: REMOVE THIS LINE WHEN THE RIGHT/LEFT VIEW SYNTHESIZE KERNEL IS CORRECTLY RUN.
 
-	printf("output width : %d = %d + %d + %d + %d\n", output_width_each_dir[0] + output_width_each_dir[1] + output_width_each_dir[2] + output_width_each_dir[3], output_width_each_dir[0], output_width_each_dir[1], output_width_each_dir[2], output_width_each_dir[3]);
-	printf("x-range = %d, %d, %d, %d\n", blocksPerGrid_F.x * threadsPerBlock.x, blocksPerGrid_R.x * threadsPerBlock.x, blocksPerGrid_B.x * threadsPerBlock.x, blocksPerGrid_L.x * threadsPerBlock.x);
-	synthesize << < blocksPerGrid_F, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, 0, mode, 0, curPosX, curPosY, io_config.LF_width, io_config.LF_height, io_config.LF_length, io_config.slice_width);
+	printf("output width : %d = L%d + F%d + R%d + B%d\n", output_width_each_dir[0] + output_width_each_dir[1] + output_width_each_dir[2] + output_width_each_dir[3], output_width_each_dir[3], output_width_each_dir[0], output_width_each_dir[1], output_width_each_dir[2]);
+	printf("thx-range = L%d, F%d, R%d, B%d\n", blocksPerGrid_L.x * threadsPerBlock.x, blocksPerGrid_F.x * threadsPerBlock.x, blocksPerGrid_R.x * threadsPerBlock.x, blocksPerGrid_B.x * threadsPerBlock.x);
+	
+	synthesize << < blocksPerGrid_L, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, 0, mode, 3, curPosX, curPosY, localPosX[3], localPosY[3], io_config.LF_width, io_config.LF_height, io_config.LF_length, io_config.slice_width);
 	err = cudaStreamSynchronize(stream_main);
 	assert(err == cudaSuccess);
-	synthesize << < blocksPerGrid_R, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[0], mode, 1, curPosX, curPosY, io_config.LF_width, io_config.LF_height, io_config.LF_length, io_config.slice_width);
+	synthesize << < blocksPerGrid_F, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[3], mode, 0, curPosX, curPosY, localPosX[0], localPosY[0], io_config.LF_width, io_config.LF_height, io_config.LF_length, io_config.slice_width);
 	err = cudaStreamSynchronize(stream_main);
 	assert(err == cudaSuccess);
-	synthesize << < blocksPerGrid_B, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[0] + output_width_each_dir[1], mode, 2, curPosX, curPosY, io_config.LF_width, io_config.LF_height, io_config.LF_length, io_config.slice_width);
+	synthesize << < blocksPerGrid_R, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[3] + output_width_each_dir[0], mode, 1, curPosX, curPosY, localPosX[1], localPosY[1], io_config.LF_width, io_config.LF_height, io_config.LF_length, io_config.slice_width);
 	err = cudaStreamSynchronize(stream_main);
 	assert(err == cudaSuccess);
-	synthesize << < blocksPerGrid_L, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[0] + output_width_each_dir[1] + output_width_each_dir[2], mode, 3, curPosX, curPosY, io_config.LF_width, io_config.LF_height, io_config.LF_length, io_config.slice_width);
+	synthesize << < blocksPerGrid_B, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[3] + output_width_each_dir[0] + output_width_each_dir[1], mode, 2, curPosX, curPosY, localPosX[2], localPosY[2], io_config.LF_width, io_config.LF_height, io_config.LF_length, io_config.slice_width);
 	err = cudaStreamSynchronize(stream_main);
 	assert(err == cudaSuccess);
+	
 
 	state_main_thread = MAIN_THREAD_COMPLETE;
 
@@ -133,8 +135,8 @@ void LF_Renderer::set_rendering_range(int* localPosX, int* localPosY, int* outpu
 	localPosY[3] = -1 * localPosX[0];
 
 	for (int i = 0; i < 4; i++) {
-		float theta_L = rad2deg(atan2((-1.0 * LFU_WIDTH / 2 - localPosX[i]), (LFU_WIDTH / 2 - localPosY[i])));
-		float theta_R = rad2deg(atan2((1.0 * LFU_WIDTH / 2 - localPosX[i]), (LFU_WIDTH / 2 - localPosY[i])));
+		float theta_L = rad2deg(atan2f((-1.0f * LFU_WIDTH / 2 - localPosX[i]), (LFU_WIDTH / 2 - localPosY[i])));
+		float theta_R = rad2deg(atan2f((1.0f * LFU_WIDTH / 2 - localPosX[i]), (LFU_WIDTH / 2 - localPosY[i])));
 		output_width[i] = (int)((theta_R - theta_L) / 0.04f);
 	}
 }
@@ -279,26 +281,10 @@ __device__ int dev_query_hashmap(int lf, int img, int slice, int width, int leng
 	return lf * (width / slice_width) * length + img * (width / slice_width) + slice;
 }
 
-__global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** d_hashmap_even, int offset, int mode, int direction, int posX, int posY, int width, int height, int legnth, int slice_width, float fov, float times)
+__global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** d_hashmap_even, int offset, int mode, int direction, int posX, int posY, int localPosX, int localPosY, int width, int height, int legnth, int slice_width, float fov, float times)
 {
 	int tw = blockIdx.x * blockDim.x + threadIdx.x; // blockIdx.x = (int)[0, (out_w - 1)]
 	int th = blockIdx.y * blockDim.y + threadIdx.y; // threadIdx = (int)[0, (g_height - 1)]
-
-	int localPosX = posX % 100 - 50;
-	int localPosY = posY % 100 - 50;
-
-	if (direction == 1) {
-		localPosX = -1 * localPosY;
-		localPosY = localPosX;
-	}
-	else if (direction == 2) {
-		localPosX = -1 * localPosX;
-		localPosY = -1 * localPosY;
-	}
-	else if (direction == 3) {
-		localPosX = localPosY;
-		localPosY = -1 * localPosX;
-	}
 
 	int LFUW = 100;
 	int DATAW = 50;
@@ -308,7 +294,6 @@ __global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t**
 	float theta_R = dev_rad2deg(atan2f((1.0f * LFUW / 2 - localPosX), (LFUW / 2 - localPosY)));
 
 	int output_width = (int)((theta_R - theta_L) / 0.04f);
-
 	if (tw < output_width) {
 		float theta_P = theta_L + (0.04f * (float)tw);
 
@@ -354,7 +339,7 @@ __global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t**
 		float H_r = h_n - H_1;
 
 		int slice = dev_query_hashmap(LF_num, image_num, slice_num, width, legnth, slice_width); // Random access to hashmap
-
+		
 		uint8_t oddpel_ch0 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 0]; // Random access to pixel column
 		uint8_t oddpel_ch1 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 1]; // Random access to pixel column
 		uint8_t oddpel_ch2 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 2]; // Random access to pixel column
@@ -369,7 +354,7 @@ __global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t**
 
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 0] = evenpel_ch0; // b 
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = evenpel_ch1; // g 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = evenpel_ch2; // r 
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = evenpel_ch2; // r
 		}
 		else
 		{

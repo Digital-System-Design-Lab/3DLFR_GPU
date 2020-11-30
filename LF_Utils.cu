@@ -204,22 +204,22 @@ int preRendering(int x, int z)
 	int LFUW = 100;
 	int Y = LFUW / 2;
 
-	int localPosX, localPosZ;
-
-	localPosX = x % 100 - 50;
-	localPosZ = z % 100 - 50;
 	for (int dir = 0; dir < 4; dir++) {
+		int localPosX_front = ((x % 100) - 50);
+		int localPosZ_front = ((z % 100) - 50);
+		int localPosX = localPosX_front;
+		int localPosZ = localPosZ_front;
 		if (dir == 1) {
-			localPosX = -1 * localPosZ;
-			localPosZ = localPosX;
+			localPosX = -1 * localPosZ_front;
+			localPosZ = localPosX_front;
 		}
 		else if (dir == 2) {
-			localPosX = -1 * localPosX;
-			localPosZ = -1 * localPosZ;
+			localPosX = -1 * localPosX_front;
+			localPosZ = -1 * localPosZ_front;
 		}
 		else if (dir == 3) {
-			localPosX = localPosZ;
-			localPosZ = -1 * localPosX;
+			localPosX = localPosZ_front;
+			localPosZ = -1 * localPosX_front;
 		}
 
 		float theta_L = rad2deg(atan2f((-1.0f * LFUW / 2 - localPosX), (LFUW / 2 - localPosZ)));
