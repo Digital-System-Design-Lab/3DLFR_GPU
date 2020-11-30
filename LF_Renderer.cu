@@ -80,18 +80,18 @@ uint8_t* LF_Renderer::do_rendering(const int& newPosX, const int& newPosY) {
 
 	printf("output width : %d = %d + %d + %d + %d\n", output_width_each_dir[0] + output_width_each_dir[1] + output_width_each_dir[2] + output_width_each_dir[3], output_width_each_dir[0], output_width_each_dir[1], output_width_each_dir[2], output_width_each_dir[3]);
 	printf("x-range = %d, %d, %d, %d\n", blocksPerGrid_F.x * threadsPerBlock.x, blocksPerGrid_R.x * threadsPerBlock.x, blocksPerGrid_B.x * threadsPerBlock.x, blocksPerGrid_L.x * threadsPerBlock.x);
-	// synthesize << < blocksPerGrid_F, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, 0, mode, 0, curPosX, curPosY, io_config.LF_width, io_config.LF_height, io_config.LF_length, io_config.slice_width);
-	// err = cudaStreamSynchronize(stream_main);
-	// assert(err == cudaSuccess);
+	synthesize << < blocksPerGrid_F, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, 0, mode, 0, curPosX, curPosY, io_config.LF_width, io_config.LF_height, io_config.LF_length, io_config.slice_width);
+	err = cudaStreamSynchronize(stream_main);
+	assert(err == cudaSuccess);
 	synthesize << < blocksPerGrid_R, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[0], mode, 1, curPosX, curPosY, io_config.LF_width, io_config.LF_height, io_config.LF_length, io_config.slice_width);
 	err = cudaStreamSynchronize(stream_main);
 	assert(err == cudaSuccess);
 	synthesize << < blocksPerGrid_B, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[0] + output_width_each_dir[1], mode, 2, curPosX, curPosY, io_config.LF_width, io_config.LF_height, io_config.LF_length, io_config.slice_width);
 	err = cudaStreamSynchronize(stream_main);
 	assert(err == cudaSuccess);
-	// synthesize << < blocksPerGrid_L, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[0] + output_width_each_dir[1] + output_width_each_dir[2], mode, 3, curPosX, curPosY, io_config.LF_width, io_config.LF_height, io_config.LF_length, io_config.slice_width);
-	// err = cudaStreamSynchronize(stream_main);
-	// assert(err == cudaSuccess);
+	synthesize << < blocksPerGrid_L, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[0] + output_width_each_dir[1] + output_width_each_dir[2], mode, 3, curPosX, curPosY, io_config.LF_width, io_config.LF_height, io_config.LF_length, io_config.slice_width);
+	err = cudaStreamSynchronize(stream_main);
+	assert(err == cudaSuccess);
 
 	state_main_thread = MAIN_THREAD_COMPLETE;
 
@@ -354,13 +354,6 @@ __global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t**
 		float H_r = h_n - H_1;
 
 		int slice = dev_query_hashmap(LF_num, image_num, slice_num, width, legnth, slice_width); // Random access to hashmap
-
-		// if (blockIdx.x <= 47 && blockIdx.x >= 44)
-		// {
-		// 	printf("[%d, %d], outputwidth : %d, P_1 : %d, U_1 : %d\n", tw, th, output_width, P_1, U_1);
-		// }
-
-		printf("[%d, %d]\t%d\t%d\t%d\t%f\t%d\n", posX, posY, direction, P_1, U_1, theta_P, tw);
 
 		uint8_t oddpel_ch0 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 0]; // Random access to pixel column
 		uint8_t oddpel_ch1 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 1]; // Random access to pixel column

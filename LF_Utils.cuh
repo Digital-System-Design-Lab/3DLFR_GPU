@@ -67,7 +67,7 @@ std::string IntToFormattedString(int n);
 
 std::string FloatToFormattedString(float n);
 
-int preRendering(int x, int z, int dir);
+int preRendering(int x, int z);
 
 void write_rendering_range();
 

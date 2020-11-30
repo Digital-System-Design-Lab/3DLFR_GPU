@@ -187,12 +187,18 @@ std::string FloatToFormattedString(float f)
 		return (std::to_string(f));
 }
 
-int preRendering(int x, int z, int dir)
-{	
-	float fov = 90.0f;
-	float times = 270.f;
+int preRendering(int x, int z)
+{
+	std::pair<int, int> range[4][50];
 
-	int errCode = 0;
+	for (int i = 0; i < 4; i++)
+	{
+		for (int j = 0; j < 50; j++)
+		{
+			range[i][j].first = 1e6;
+			range[i][j].second = -1e6;
+		}
+	}
 
 	int DATAW = 50;
 	int LFUW = 100;
@@ -202,74 +208,72 @@ int preRendering(int x, int z, int dir)
 
 	localPosX = x % 100 - 50;
 	localPosZ = z % 100 - 50;
-	if (dir == 1) {
-		localPosX = -1 * localPosZ;
-		localPosZ = localPosX;
-	}
-	else if (dir == 2) {
-		localPosX = -1 * localPosX;
-		localPosZ = -1 * localPosZ;
-	}
-	else if (dir == 3) {
-		localPosX = localPosZ;
-		localPosZ = -1 * localPosX;
-	}
-
-	float theta_L = rad2deg(atan2((-1.0 * LFUW / 2 - localPosX), (LFUW / 2 - localPosZ)));
-	float theta_R = rad2deg(atan2((1.0 * LFUW / 2 - localPosX), (LFUW / 2 - localPosZ)));
-
-	int prevP = 1e6;
-	int min = 1e6;
-	int max = -1e6;
-
-	std::string filename = "S:/4K/LFU/" + std::to_string(x) + "_" + std::to_string(z) + ".txt";
-	FILE* fp = fopen(filename.c_str(), "a");
-	int output_width = (theta_R - theta_L) / 0.04f;
-	// printf("%f - (%f) = %f -> %d\n",theta_R, theta_L, output_width);
-	for (int w = 0; w < output_width; w++)
-	{
-		float theta_P = theta_L + (0.04f * (float)w); // 가져올 ray가 front와 이루는 각 (rad)
-		// float xP = x0 + z0 * tanf(deg2rad(theta_P)); // tan -> 구간 내에서 odd function
-		float xP = (float)(Y - localPosZ) * tanf(deg2rad(theta_P)) + localPosX; // tan -> 구간 내에서 odd function
-		float b = sqrtf(2.0f) * LFUW;
-		float N_dist = sqrt((float)((xP - localPosX) * (xP - localPosX) + (Y - localPosZ) * (Y - localPosZ))) / b;
-
-		xP /= 2;
-		int P_1 = (int)round(xP + (DATAW / 2));
-		if (dir == 2 || dir == 3) P_1 = DATAW - P_1 - 1;
-		P_1 = clamp(P_1, 0, DATAW - 1);
-		// P_1 = Clamp(P_1, 0, LEN_CAM_ARRAY - 1);
-
-		float U = (theta_P * ((1.0) / (180.0))) * WIDTH / 2 + WIDTH / 2;
-		int U_1 = (int)(roundf(U));
-
-		if (dir == 1) U_1 += WIDTH / 4;
-		if (dir == 2) U_1 += WIDTH / 2;
-		if (dir == 3) U_1 -= WIDTH / 4;
-		U_1 %= WIDTH;
-		U_1 = clamp(U_1, 0, WIDTH - 1);
-		if ((prevP != 1e6 && prevP != P_1) || w == output_width - 1)
-		{
-			fprintf(fp, "%d\t%d\t%d\t%d\n", dir, prevP, min, max);
-			min = 1e6;
-			max = -1e6;
+	for (int dir = 0; dir < 4; dir++) {
+		if (dir == 1) {
+			localPosX = -1 * localPosZ;
+			localPosZ = localPosX;
 		}
-		prevP = P_1;
-		minmax(U_1, min, max);
+		else if (dir == 2) {
+			localPosX = -1 * localPosX;
+			localPosZ = -1 * localPosZ;
+		}
+		else if (dir == 3) {
+			localPosX = localPosZ;
+			localPosZ = -1 * localPosX;
+		}
 
+		float theta_L = rad2deg(atan2f((-1.0f * LFUW / 2 - localPosX), (LFUW / 2 - localPosZ)));
+		float theta_R = rad2deg(atan2f((1.0f * LFUW / 2 - localPosX), (LFUW / 2 - localPosZ)));
+
+		int output_width = (int)((theta_R - theta_L) / 0.04f);
+		for (int w = 0; w < output_width; w++)
+		{
+			float theta_P = theta_L + (0.04f * (float)w); // 가져올 ray가 front와 이루는 각 (rad)
+			// float xP = x0 + z0 * tanf(deg2rad(theta_P)); // tan -> 구간 내에서 odd function
+			float xP = (float)(Y - localPosZ) * tanf(deg2rad(theta_P)) + localPosX; // tan -> 구간 내에서 odd function
+			float b = sqrtf(2.0f) * LFUW;
+			float N_dist = sqrt((float)((xP - localPosX) * (xP - localPosX) + (Y - localPosZ) * (Y - localPosZ))) / b;
+
+			xP /= 2;
+			int P_1 = (int)roundf(xP + (DATAW / 2));
+			if (dir == 1 || dir == 2) P_1 = DATAW - P_1 - 1;
+			P_1 = clamp(P_1, 0, DATAW - 1);
+
+			float U = (theta_P * ((1.0f) / (180.0f))) * WIDTH / 2 + WIDTH / 2;
+			int U_1 = (int)(roundf(U));
+
+			if (dir == 1) U_1 += WIDTH / 4;
+			if (dir == 2) U_1 += WIDTH / 2;
+			if (dir == 3) U_1 -= WIDTH / 4;
+			if (U_1 >= WIDTH) U_1 = U_1 - WIDTH;
+			else if (U_1 < 0) U_1 = U_1 + WIDTH;
+			U_1 = clamp(U_1, 0, WIDTH - 1);
+
+			range[dir][P_1].first = U_1 < range[dir][P_1].first ? U_1 : range[dir][P_1].first;
+			range[dir][P_1].second = U_1 > range[dir][P_1].second ? U_1 : range[dir][P_1].second;
+		}
 	}
 
+	std::string filename = "S:/PixelRange/" + std::to_string(x) + "_" + std::to_string(z) + ".txt";
+	FILE* fp = fopen(filename.c_str(), "w");
+	for (int i = 0; i < 4; i++)
+	{
+		for (int j = 0; j < 50; j++)
+		{
+			if (range[i][j].first != 1e6 || range[i][j].second != -1e6)
+				fprintf(fp, "%d\t%d\t%d\t%d\n", i, j, range[i][j].first, range[i][j].second);
+		}
+	}
 	fclose(fp);
+
 	return 0;
 }
 
 void write_rendering_range()
 {
-	for (int dir = 0; dir < 4; dir++) {
-		for (int y = 0; y < 100; y++) {
-			for (int x = 0; x < 100; x++) {
-				preRendering(x, y, dir);
-			}
+	for (int y = 0; y < 100; y++) {
+		for (int x = 0; x < 100; x++) {
+			preRendering(x, y);
 		}
 	}
 }
