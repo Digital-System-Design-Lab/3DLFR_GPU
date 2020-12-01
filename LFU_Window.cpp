@@ -1,5 +1,86 @@
 #include "LFU_Window.h"
 
+LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_field_size, const std::string& dir, bool use_window)
+{
+	this->LF_prefix = dir;
+
+	int LFUID = getLFUID(posX, posY);
+	
+	printf("Allocating pinned memory");
+	for (int i = 0; i < 2; i++) {
+		for (int j = 0; j < 4; j++) {
+			printf(".");
+			m_pinnedLFU[i][j] = alloc_uint8(light_field_size, "pinned");
+		}
+	}
+	printf(" Complete\n");
+
+	for (int i = 0; i < 12; i++) {
+		if (i == 4 || i == 7) {
+			m_row[i].odd_field = alloc_uint8(light_field_size, "pageable");
+			m_row[i].even_field = nullptr;
+			m_row[i].type = ROW;
+
+			m_col[i].odd_field = alloc_uint8(light_field_size, "pageable");
+			m_col[i].even_field = nullptr;
+			m_col[i].type = COL;
+
+			m_row[i].progress = LF_READ_PROGRESS_NOT_PREPARED;
+			m_col[i].progress = LF_READ_PROGRESS_NOT_PREPARED;
+		}
+		else {
+			m_row[i].odd_field = nullptr;
+			m_row[i].even_field = nullptr;
+			m_row[i].type = ROW;
+
+			m_col[i].odd_field = nullptr;
+			m_col[i].even_field = nullptr;
+			m_col[i].type = COL;
+
+			m_row[i].progress = LF_READ_PROGRESS_NOT_PREPARED;
+			m_col[i].progress = LF_READ_PROGRESS_NOT_PREPARED;
+		}
+	}
+
+	m_LFU[8].LF[FRONT] = &m_row[4]; // center
+	m_LFU[8].LF[RIGHT] = &m_col[7];
+	m_LFU[8].LF[BACK] = &m_row[7];
+	m_LFU[8].LF[LEFT] = &m_col[4];
+
+	m_LFU[8].LF[FRONT]->even_field = m_pinnedLFU[EVEN][FRONT];
+	m_LFU[8].LF[RIGHT]->even_field = m_pinnedLFU[EVEN][RIGHT];
+	m_LFU[8].LF[BACK]->even_field = m_pinnedLFU[EVEN][BACK];
+	m_LFU[8].LF[LEFT]->even_field = m_pinnedLFU[EVEN][LEFT];
+
+	printf("Reading Odd Field LFs");
+
+	printf(".");
+
+	int LF_num_each_dir[4];
+	find_LF_number_BMW(LF_num_each_dir[0], LF_num_each_dir[1], LF_num_each_dir[2], LF_num_each_dir[3], LFUID);
+
+	for (int dir = 0; dir < 4; dir++) {
+		m_LFU[8].id = LFUID;
+		if (m_LFU[8].LF[dir]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED) {
+			read_uint8(m_LFU[8].LF[dir]->odd_field, BMW_LF[LFUID][dir], ODD);
+			m_LFU[8].LF[dir]->LF_number = LF_num_each_dir[dir];
+			m_LFU[8].LF[dir]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+	}
+	m_center = &m_LFU[8];
+
+	printf("Reading Even Field LFs");
+	for (int dir = 0; dir < 4; dir++) {
+		memcpy(m_pinnedLFU[ODD][dir], m_center->LF[dir]->odd_field, light_field_size);
+		read_uint8(m_center->LF[dir]->even_field, BMW_LF[m_center->id][dir], EVEN);
+		m_center->LF[dir]->progress = LF_READ_PROGRESS_EVEN_FIELD_PREPARED;
+		printf(".");
+	}
+	pinned_memory_status = PINNED_LFU_EVEN_AVAILABLE;
+
+	printf("Complete\n");
+}
+
 LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_field_size, const std::string& dir)
 {
 	this->LF_prefix = dir;

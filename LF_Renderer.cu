@@ -1,7 +1,9 @@
 #include "LF_Renderer.cuh"
 
-LF_Renderer::LF_Renderer(const std::string& pixel_range_path, const std::string& LF_path, const int& initPosX, const int& initPosY, const size_t& limit_cache_size, const size_t& limit_LF)
+LF_Renderer::LF_Renderer(const std::string& pixel_range_path, const std::string& LF_path, const int& initPosX, const int& initPosY, bool use_window, const size_t& limit_cache_size, const size_t& limit_LF)
 {
+	this->use_window = use_window;
+
 	const size_t light_field_size = 4096 * 2048 * 3 * 50 / 2; // 라이트 필드 파일 사이즈
 
 	curPosX = initPosX; // 초기 위치
@@ -15,7 +17,12 @@ LF_Renderer::LF_Renderer(const std::string& pixel_range_path, const std::string&
 	
 	LRU_Cache* lru_cache = new LRU_Cache(limit_LF, limit_cache_size, &io_config); // LRU 캐시 초기화 (LF 개수, 캐싱할 원소 개수)
 	this->LRU = lru_cache;
-	LFU_Window* lfu_window = new LFU_Window(curPosX, curPosY, light_field_size, LF_path); // 3x3 형태의 LFU Window, 2D list
+
+	LFU_Window* lfu_window;
+	if(this->use_window == true)
+		lfu_window = new LFU_Window(curPosX, curPosY, light_field_size, LF_path); // 3x3 형태의 LFU Window, 2D list
+	else
+		lfu_window = new LFU_Window(curPosX, curPosY, light_field_size, LF_path, false); // 3x3 형태의 LFU Window, 2D list
 	this->window = lfu_window;
 	
 	this->u_synthesized_view = alloc_uint8(this->io_config.output_width * this->io_config.LF_height * 3, "unified"); // output view를 위한 버퍼
@@ -27,8 +34,10 @@ LF_Renderer::LF_Renderer(const std::string& pixel_range_path, const std::string&
 	cudaStreamCreate(&stream_h2d);
 
 	// H2D, LF Read를 위한 worker threads
-	workers.push_back(std::thread(&LF_Renderer::loop_nbrs_h2d, this, std::ref(*LRU), std::ref(*window), slice_set, std::ref(nbrPosition), stream_h2d, std::ref(state_h2d_thread), std::ref(state_main_thread), std::ref(mtx)));
-	workers.push_back(std::thread(&LF_Renderer::loop_read_disk, this, std::ref(*window), std::ref(prevPosX), std::ref(prevPosY), std::ref(curPosX), std::ref(curPosY), std::ref(light_field_size), std::ref(state_main_thread)));
+	if (this->use_window == true) {
+		workers.push_back(std::thread(&LF_Renderer::loop_nbrs_h2d, this, std::ref(*LRU), std::ref(*window), slice_set, std::ref(nbrPosition), stream_h2d, std::ref(state_h2d_thread), std::ref(state_main_thread), std::ref(mtx)));
+		workers.push_back(std::thread(&LF_Renderer::loop_read_disk, this, std::ref(*window), std::ref(prevPosX), std::ref(prevPosY), std::ref(curPosX), std::ref(curPosY), std::ref(light_field_size), std::ref(state_main_thread)));
+	}
 }
 
 LF_Renderer::~LF_Renderer() {
@@ -45,15 +54,32 @@ LF_Renderer::~LF_Renderer() {
 }
 
 // 렌더링 함수 
-uint8_t* LF_Renderer::do_rendering(const int& newPosX, const int& newPosY) {
-	this->prevPosX = curPosX;
-	this->prevPosY = curPosY;
-	this->curPosX = newPosX;
-	this->curPosY = newPosY; 
+uint8_t* LF_Renderer::do_rendering(int& newPosX, int& newPosY) {
+	if (this->use_window == false) {
+		if (getLFUID(curPosX, curPosY) != getLFUID(newPosX, newPosY)) {
+			printf("out-of-renderable range, return previous view\n");
 
-	curPosX = clamp(curPosX, 101, 499);
-	curPosY = clamp(curPosY, 101, 5499);
+			newPosX = curPosX;
+			newPosY = curPosY;
 
+			return this->u_synthesized_view;
+		}
+		else {
+			this->prevPosX = curPosX;
+			this->prevPosY = curPosY;
+			this->curPosX = newPosX;
+			this->curPosY = newPosY;
+		}
+	}
+	else {
+		this->prevPosX = curPosX;
+		this->prevPosY = curPosY;
+		this->curPosX = newPosX;
+		this->curPosY = newPosY;
+		
+		curPosX = clamp(curPosX, 101, 499);
+		curPosY = clamp(curPosY, 101, 5499);
+	}
 	set_rendering_params(localPosX, localPosY, output_width_each_dir, curPosX, curPosY); // CUDA 블록 사이즈 설정, 렌더링할 범위 설정 등
 
 	state_main_thread = MAIN_THREAD_WAIT;
@@ -98,7 +124,6 @@ uint8_t* LF_Renderer::do_rendering(const int& newPosX, const int& newPosY) {
 	err = cudaStreamSynchronize(stream_main);
 	assert(err == cudaSuccess);
 	
-
 	state_main_thread = MAIN_THREAD_COMPLETE;
 
 	return u_synthesized_view;

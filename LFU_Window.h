@@ -23,6 +23,7 @@ struct LFU {
 class LFU_Window {
 public:
 	LFU_Window(const int& posX, const int& posY, const size_t& light_field_size, const std::string& dir);
+	LFU_Window(const int& posX, const int& posY, const size_t& light_field_size, const std::string& dir, bool use_window);
 	~LFU_Window();
 	int update_window(const int& prevPosX, const int& prevPosY, const int& curPosX, const int& curPosY, const size_t& light_field_size, const MAIN_THREAD_STATE& main_thread_state);
 

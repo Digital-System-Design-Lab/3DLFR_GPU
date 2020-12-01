@@ -31,10 +31,10 @@ typedef std::vector<SliceRange> SliceSet;
 
 class LF_Renderer {
 public:
-	LF_Renderer(const std::string& pixel_range_path, const std::string& LF_path, const int& initPosX = 150, const int& initPosY = 150, const size_t& limit_cache_size = 1000, const size_t& limit_LF = 734);
+	LF_Renderer(const std::string& pixel_range_path, const std::string& LF_path, const int& initPosX = 150, const int& initPosY = 150, bool use_window = true, const size_t& limit_cache_size = 1000, const size_t& limit_LF = 734);
 	~LF_Renderer();
 
-	uint8_t* do_rendering(const int& newPosX, const int& newPosY);
+	uint8_t* do_rendering(int& newPosX, int& newPosY);
 	void terminate();
 
 private:
@@ -72,6 +72,8 @@ private:
 
 	std::mutex mtx;
 	std::vector<std::thread> workers;
+
+	bool use_window;
 };
 
 #endif

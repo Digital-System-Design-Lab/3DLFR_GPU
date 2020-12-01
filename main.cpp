@@ -37,7 +37,7 @@ int main()
 	std::string PixelRange = "S:/PixelRange_CUDA/";
 	std::string LF = "S:/BMW_4K/";
 
-	LF_Renderer renderer(PixelRange, LF, curPosX, curPosY);
+	LF_Renderer renderer(PixelRange, LF, curPosX, curPosY, false);
 
 	cv::Mat img = cv::Mat(2048, 9000, CV_8UC3);
 	cv::namedWindow("window", CV_WINDOW_NORMAL);
