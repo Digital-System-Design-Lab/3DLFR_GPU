@@ -1,8 +1,7 @@
 #include "LF_Renderer.cuh"
-//#include <opencv2/core/core.hpp>
-//#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
-#if 0
 int getKeywithCV(int& posX, int& posY)
 {
 	printf("%d, %d -> ", posX, posY);
@@ -29,7 +28,6 @@ int getKeywithCV(int& posX, int& posY)
 
 	return 0;
 }
-#endif
 
 int main()
 {
@@ -40,12 +38,11 @@ int main()
 	std::string LF = "S:/BMW_4K/";
 
 	LF_Renderer renderer(PixelRange, LF, curPosX, curPosY);
-	FILE* fp;
-#if 0
+
 	cv::Mat img = cv::Mat(2048, 9000, CV_8UC3);
 	cv::namedWindow("window", CV_WINDOW_NORMAL);
 	cv::resizeWindow("window", 2250, 512);
-#endif
+
 	StopWatch sw;
 
 	while (1)
@@ -53,13 +50,13 @@ int main()
 		sw.Start();
 		uint8_t* synthesized_view = renderer.do_rendering(curPosX, curPosY);
 		printf("%f ms (%.3f Hz)\n", sw.Stop(), (1/sw.Stop() * 1000));
-		//img.data = synthesized_view;
-		fp = fopen(("./result/view/[9000x2048] " + std::to_string(curPosX) + "_" + std::to_string(curPosY) + ".bgr").c_str(), "wb");
-		fwrite(synthesized_view, 1, 9000 * 2048 * 3, fp);
-		fclose(fp);
-		if (getKey(curPosX, curPosY) < 0) break;
-		//cv::imshow("window", img);
-		//if(getKeywithCV(curPosX, curPosY) < 0) break;
+		img.data = synthesized_view;
+		// fp = fopen(("./result/view/[9000x2048] " + std::to_string(curPosX) + "_" + std::to_string(curPosY) + ".bgr").c_str(), "wb");
+		// fwrite(synthesized_view, 1, 9000 * 2048 * 3, fp);
+		// fclose(fp);
+		// if (getKey(curPosX, curPosY) < 0) break;
+		cv::imshow("window", img);
+		if(getKeywithCV(curPosX, curPosY) < 0) break;
 	}
 	renderer.terminate();
 

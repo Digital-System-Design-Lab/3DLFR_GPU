@@ -603,7 +603,7 @@ int LFU_Window::read_uint8(uint8_t* buf, std::string filename, const INTERLACE_F
 	if (field == ODD) filename += "_odd.bgr";
 	else filename += "_even.bgr";
 
-	fd = _open(filename.c_str(), O_RDONLY | O_BINARY);
+	fd = open(filename.c_str(), O_RDONLY | O_BINARY);
 	ret = fd;
 	if (ret < 0) {
 		printf("open failed, %s\n", filename.c_str());
@@ -612,26 +612,26 @@ int LFU_Window::read_uint8(uint8_t* buf, std::string filename, const INTERLACE_F
 	}
 
 	if (size < 0) {
-		if ((ret = _lseek(fd, 0, SEEK_END)) < 0) {
+		if ((ret = lseek(fd, 0, SEEK_END)) < 0) {
 			printf("SEEK_END failed, %s\n", filename.c_str());
 			assert(ret == 0);
 			exit(1);
 		}
-		if ((ret = _tell(fd)) < 0) {
+		if ((ret = tell(fd)) < 0) {
 			printf("tell failed, %s\n", filename.c_str());
 			assert(ret == 0);
 			exit(1);
 		}
 		size = ret;
-		if ((ret = _lseek(fd, 0, SEEK_SET)) < 0) {
+		if ((ret = lseek(fd, 0, SEEK_SET)) < 0) {
 			printf("SEEK_SET failed, %s\n", filename.c_str());
 			assert(ret == 0);
 			exit(1);
 		}
 	}
 
-	ret = _read(fd, buf, sizeof(uint8_t) * size); // x64
-	_close(fd);
+	ret = read(fd, buf, sizeof(uint8_t) * size); // x64
+	close(fd);
 
 	if (ret != size) {
 		printf("read failed, %s\n", filename.c_str());

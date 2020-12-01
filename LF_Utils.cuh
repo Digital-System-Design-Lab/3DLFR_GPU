@@ -1,7 +1,7 @@
 ﻿#ifndef LF_UTILS_CUH_
 #define LF_UTILS_CUH_ 
 // Properties->CUDA C/C++->Common->generate relocatable device code=Yes
-#define _CRT_SECURE_NO_WARNINGS
+
 #include "enums.h"
 
 #include "cuda_runtime.h"
