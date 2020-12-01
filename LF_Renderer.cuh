@@ -39,12 +39,12 @@ public:
 
 private:
 	void load_slice_set(SliceSet slice_set[][100], std::string prefix);
-	void loop_nbrs_h2d(LRUCache& LRU, const LFU_Window& window, SliceSet slice_set[][100], std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, H2D_THREAD_STATE& thread_state_h2d, const MAIN_THREAD_STATE& thread_state_main, std::mutex& mtx);
+	void loop_nbrs_h2d(LRU_Cache& LRU, const LFU_Window& window, SliceSet slice_set[][100], std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, H2D_THREAD_STATE& thread_state_h2d, const MAIN_THREAD_STATE& thread_state_main, std::mutex& mtx);
 	void loop_read_disk(LFU_Window& window, const int& prevPosX, const int& prevPosY, const int& curPosX, const int& curPosY, const int& light_field_size, const MAIN_THREAD_STATE& main_thread_state);
-	void set_rendering_range(int* localPosX, int* localPosY, int* output_width, const int& curPosX, const int& curPosY);
+	void set_rendering_params(int* localPosX, int* localPosY, int* output_width, const int& curPosX, const int& curPosY);
 	void getNeighborList(std::vector<std::pair<int, int>>& nbrPosition, const int& curPosX, const int& curPosY);
-	int cache_slice(LRUCache& LRU, const LFU_Window& window, SliceSet slice_set[][100], const int& posX, const int& posY);
-	int cache_slice_in_background(LRUCache& LRU, const LFU_Window& window, SliceSet slice_set[][100], std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, H2D_THREAD_STATE& thread_state_h2d, const MAIN_THREAD_STATE& thread_state_main);
+	int cache_slice(LRU_Cache& LRU, const LFU_Window& window, SliceSet slice_set[][100], const int& posX, const int& posY);
+	int cache_slice_in_background(LRU_Cache& LRU, const LFU_Window& window, SliceSet slice_set[][100], std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, H2D_THREAD_STATE& thread_state_h2d, const MAIN_THREAD_STATE& thread_state_main);
 	int find_slice_from_LF(const int& img, const int& slice);
 
 	IO_Config io_config;
@@ -63,7 +63,7 @@ private:
 	SliceSet slice_set[100][100];
 	cudaStream_t stream_main, stream_h2d;
 
-	LRUCache* LRU;
+	LRU_Cache* LRU;
 	LFU_Window* window;
 	uint8_t* u_synthesized_view;
 

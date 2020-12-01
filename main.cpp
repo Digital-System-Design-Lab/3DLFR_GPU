@@ -31,10 +31,10 @@ int getKeywithCV(int& posX, int& posY)
 
 int main()
 {
-	int curPosX = 150;
-	int curPosY = 150;
+	int curPosX = 193;
+	int curPosY = 199;
 
-	std::string PixelRange = "S:/PixelRange/";
+	std::string PixelRange = "S:/PixelRange_CUDA/";
 	std::string LF = "S:/BMW_4K/";
 
 	LF_Renderer renderer(PixelRange, LF, curPosX, curPosY);
@@ -42,10 +42,19 @@ int main()
 	cv::Mat img = cv::Mat(2048, 9000, CV_8UC3);
 	cv::namedWindow("window", CV_WINDOW_NORMAL);
 	cv::resizeWindow("window", 2250, 512);
+
+	StopWatch sw;
+
 	while (1)
 	{
+		sw.Start();
 		uint8_t* synthesized_view = renderer.do_rendering(curPosX, curPosY);
+		printf("%f ms (%.3f Hz)\n", sw.Stop(), (1/sw.Stop() * 1000));
 		img.data = synthesized_view;
+		// fp = fopen(("./result/view/[9000x2048] " + std::to_string(curPosX) + "_" + std::to_string(curPosY) + ".bgr").c_str(), "wb");
+		// fwrite(synthesized_view, 1, 9000 * 2048 * 3, fp);
+		// fclose(fp);
+		// if (getKey(curPosX, curPosY) < 0) break;
 		cv::imshow("window", img);
 		if(getKeywithCV(curPosX, curPosY) < 0) break;
 	}

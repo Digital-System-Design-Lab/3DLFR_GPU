@@ -2,30 +2,31 @@
 
 LF_Renderer::LF_Renderer(const std::string& pixel_range_path, const std::string& LF_path, const int& initPosX, const int& initPosY, const size_t& limit_cache_size, const size_t& limit_LF)
 {
-	const size_t light_field_size = 4096 * 2048 * 3 * 50 / 2;
+	const size_t light_field_size = 4096 * 2048 * 3 * 50 / 2; // 라이트 필드 파일 사이즈
 
-	curPosX = initPosX;
+	curPosX = initPosX; // 초기 위치
 	curPosY = initPosY;
 	prevPosX = curPosX;
 	prevPosY = curPosY;
-	this->nbrPosition.resize(8);
+	this->nbrPosition.resize(8); // 현재 viewpoint의 8개 이웃 
 	getNeighborList(nbrPosition, curPosX, curPosY);
 
-	load_slice_set(this->slice_set, pixel_range_path);
+	load_slice_set(this->slice_set, pixel_range_path); // ./PixelRange의 파일을 읽고 pixel range를 load
 	
-	LRUCache* lru_cache = new LRUCache(limit_LF, limit_cache_size, &io_config);
+	LRU_Cache* lru_cache = new LRU_Cache(limit_LF, limit_cache_size, &io_config); // LRU 캐시 초기화 (LF 개수, 캐싱할 원소 개수)
 	this->LRU = lru_cache;
-	LFU_Window* lfu_window = new LFU_Window(curPosX, curPosY, light_field_size, LF_path);
+	LFU_Window* lfu_window = new LFU_Window(curPosX, curPosY, light_field_size, LF_path); // 3x3 형태의 LFU Window, 2D list
 	this->window = lfu_window;
 	
-	this->u_synthesized_view = alloc_uint8(this->io_config.output_width * this->io_config.LF_height * 3, "unified");
+	this->u_synthesized_view = alloc_uint8(this->io_config.output_width * this->io_config.LF_height * 3, "unified"); // output view를 위한 버퍼
 
-	state_main_thread = MAIN_THREAD_INIT;
-	state_h2d_thread = H2D_THREAD_INIT;
+	state_main_thread = MAIN_THREAD_INIT; // 백그라운드 Disk->Hostmem LF read를 담당하는 초기 스레드 상태
+	state_h2d_thread = H2D_THREAD_INIT; // 백그라운드 LRU 캐싱을 담당하는 스레드 초기상태
 
-	cudaStreamCreate(&stream_main);
+	cudaStreamCreate(&stream_main); // CUDA Concurrency를 위한 streams
 	cudaStreamCreate(&stream_h2d);
 
+	// H2D, LF Read를 위한 worker threads
 	workers.push_back(std::thread(&LF_Renderer::loop_nbrs_h2d, this, std::ref(*LRU), std::ref(*window), slice_set, std::ref(nbrPosition), stream_h2d, std::ref(state_h2d_thread), std::ref(state_main_thread), std::ref(mtx)));
 	workers.push_back(std::thread(&LF_Renderer::loop_read_disk, this, std::ref(*window), std::ref(prevPosX), std::ref(prevPosY), std::ref(curPosX), std::ref(curPosY), std::ref(light_field_size), std::ref(state_main_thread)));
 }
@@ -43,24 +44,26 @@ LF_Renderer::~LF_Renderer() {
 	cudaStreamDestroy(stream_h2d);
 }
 
+// 렌더링 함수 
 uint8_t* LF_Renderer::do_rendering(const int& newPosX, const int& newPosY) {
 	this->prevPosX = curPosX;
 	this->prevPosY = curPosY;
 	this->curPosX = newPosX;
-	this->curPosY = newPosY;
+	this->curPosY = newPosY; 
+
 	curPosX = clamp(curPosX, 101, 499);
 	curPosY = clamp(curPosY, 101, 5499);
 
-	set_rendering_range(localPosX, localPosY, output_width_each_dir, curPosX, curPosY);
+	set_rendering_params(localPosX, localPosY, output_width_each_dir, curPosX, curPosY); // CUDA 블록 사이즈 설정, 렌더링할 범위 설정 등
 
 	state_main_thread = MAIN_THREAD_WAIT;
-	getNeighborList(nbrPosition, curPosX, curPosY);
+	getNeighborList(nbrPosition, curPosX, curPosY); // viewpoint의 이웃 8개를 리턴
 
 	state_main_thread = MAIN_THREAD_H2D;
 
 	mtx.lock();
-	int ret = cache_slice(*LRU, *window, slice_set, curPosX, curPosY);
-	int mode = LRU->synchronize_HashmapOfPtr(*window, stream_main);
+	int ret = cache_slice(*LRU, *window, slice_set, curPosX, curPosY); // 현재 viewpoint에 필요한 slices를 캐싱
+	int mode = LRU->synchronize_HashmapOfPtr(*window, stream_main); // Host memory <-> Device memory 동기화
 	mtx.unlock();
 
 	state_main_thread = MAIN_THREAD_RENDERING;
@@ -81,6 +84,7 @@ uint8_t* LF_Renderer::do_rendering(const int& newPosX, const int& newPosY) {
 	printf("output width : %d = L%d + F%d + R%d + B%d\n", output_width_each_dir[0] + output_width_each_dir[1] + output_width_each_dir[2] + output_width_each_dir[3], output_width_each_dir[3], output_width_each_dir[0], output_width_each_dir[1], output_width_each_dir[2]);
 	printf("thx-range = L%d, F%d, R%d, B%d\n", blocksPerGrid_L.x * threadsPerBlock.x, blocksPerGrid_F.x * threadsPerBlock.x, blocksPerGrid_R.x * threadsPerBlock.x, blocksPerGrid_B.x * threadsPerBlock.x);
 	
+	// 렌더링 커널
 	synthesize << < blocksPerGrid_L, threadsPerBlock, 0, stream_main >> > (u_synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, 0, mode, 3, curPosX, curPosY, localPosX[3], localPosY[3], io_config.LF_width, io_config.LF_height, io_config.LF_length, io_config.slice_width);
 	err = cudaStreamSynchronize(stream_main);
 	assert(err == cudaSuccess);
@@ -100,7 +104,8 @@ uint8_t* LF_Renderer::do_rendering(const int& newPosX, const int& newPosY) {
 	return u_synthesized_view;
 }
 
-void LF_Renderer::terminate()
+// 종료 함수 (worker threads join을 위해)
+void LF_Renderer::terminate() 
 {
 	state_main_thread = MAIN_THREAD_TERMINATED;
 }
@@ -123,7 +128,7 @@ void LF_Renderer::load_slice_set(SliceSet slice_set[][100], std::string prefix) 
 	}
 }
 
-void LF_Renderer::set_rendering_range(int* localPosX, int* localPosY, int* output_width, const int& curPosX, const int& curPosY)
+void LF_Renderer::set_rendering_params(int* localPosX, int* localPosY, int* output_width, const int& curPosX, const int& curPosY)
 {
 	localPosX[0] = curPosX % 100 - 50;
 	localPosY[0] = curPosY % 100 - 50;
@@ -153,7 +158,7 @@ void LF_Renderer::getNeighborList(std::vector<std::pair<int, int>>& nbrPosition,
 	nbrPosition[7] = (std::make_pair(curPosX - 1, curPosY - 1));
 }
 
-void LF_Renderer::loop_nbrs_h2d(LRUCache& LRU, const LFU_Window& window, SliceSet slice_set[][100], std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, H2D_THREAD_STATE& state_h2d_thread, const MAIN_THREAD_STATE& state_main_thread, std::mutex& mtx)
+void LF_Renderer::loop_nbrs_h2d(LRU_Cache& LRU, const LFU_Window& window, SliceSet slice_set[][100], std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, H2D_THREAD_STATE& state_h2d_thread, const MAIN_THREAD_STATE& state_main_thread, std::mutex& mtx)
 {
 	while (state_main_thread != MAIN_THREAD_TERMINATED) {
 		mtx.lock();
@@ -171,7 +176,7 @@ void LF_Renderer::loop_read_disk(LFU_Window& window, const int& prevPosX, const 
 	}
 }
 
-int LF_Renderer::cache_slice(LRUCache& LRU, const LFU_Window& window, SliceSet slice_set[][100], const int& posX, const int& posY) {
+int LF_Renderer::cache_slice(LRU_Cache& LRU, const LFU_Window& window, SliceSet slice_set[][100], const int& posX, const int& posY) {
 	int localPosX = posX % 100;
 	int localPosY = posY % 100;
 
@@ -213,7 +218,7 @@ int LF_Renderer::cache_slice(LRUCache& LRU, const LFU_Window& window, SliceSet s
 	return 0;
 }
 
-int LF_Renderer::cache_slice_in_background(LRUCache& LRU, const LFU_Window& window, SliceSet slice_set[][100], std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, H2D_THREAD_STATE& thread_state_h2d, const MAIN_THREAD_STATE& thread_state_main) {
+int LF_Renderer::cache_slice_in_background(LRU_Cache& LRU, const LFU_Window& window, SliceSet slice_set[][100], std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, H2D_THREAD_STATE& thread_state_h2d, const MAIN_THREAD_STATE& thread_state_main) {
 	int i = 0;
 	int s = 0;
 
@@ -294,12 +299,12 @@ __global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t**
 	float theta_R = dev_rad2deg(atan2f((1.0f * LFUW / 2 - localPosX), (LFUW / 2 - localPosY)));
 
 	int output_width = (int)((theta_R - theta_L) / 0.04f);
+
 	if (tw < output_width) {
 		float theta_P = theta_L + (0.04f * (float)tw);
 
 		float b = sqrt(2.0f) * LFUW;
 		float xP = (float)(Y - localPosY) * tanf(dev_deg2rad(theta_P)) + localPosX;
-
 		float N_dist = sqrt((float)((xP - localPosX) * (xP - localPosX) + (Y - localPosY) * (Y - localPosY))) / b;
 
 		xP /= 2;
@@ -340,13 +345,16 @@ __global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t**
 
 		int slice = dev_query_hashmap(LF_num, image_num, slice_num, width, legnth, slice_width); // Random access to hashmap
 		
+		// if(blockIdx.x == 0 && threadIdx.x == 0)
+		// 	printf("[%d, %d]->[%d, %d]\t%d\t%d\t%d\t%f < %f < %f\t%d\n", posX, posY, localPosX, localPosY, direction, P_1, U_1, theta_L, theta_P, theta_R, tw);
+
 		uint8_t oddpel_ch0 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 0]; // Random access to pixel column
 		uint8_t oddpel_ch1 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 1]; // Random access to pixel column
 		uint8_t oddpel_ch2 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 2]; // Random access to pixel column
 		outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 0] = oddpel_ch0; // b 
 		outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 1] = oddpel_ch1; // g 
 		outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 2] = oddpel_ch2; // r 
-
+		
 		if (mode == 1) {
 			uint8_t evenpel_ch0 = d_hashmap_even[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 0]; // Random access to pixel column
 			uint8_t evenpel_ch1 = d_hashmap_even[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 1]; // Random access to pixel column
@@ -361,6 +369,16 @@ __global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t**
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 0] = oddpel_ch0; // b 
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = oddpel_ch1; // g 
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = oddpel_ch2; // r 
+		}
+
+		if (tw == output_width - 1 || tw == 0) // for debug
+		{
+			outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 0] = 0; // b 
+			outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 1] = 0; // g 
+			outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 2] = 255; // r 
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 0] = 0; // b 
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = 0; // g 
+			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = 255; // r
 		}
 	}
 }

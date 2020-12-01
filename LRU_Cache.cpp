@@ -1,6 +1,6 @@
 #include "LRU_Cache.h"
 
-LRUCache::LRUCache(const size_t& num_limit_HashingLF, const size_t& num_limit_slice, IO_Config* config)
+LRU_Cache::LRU_Cache(const size_t& num_limit_HashingLF, const size_t& num_limit_slice, IO_Config* config)
 {
 	this->io_config = config;
 	this->head_odd = nullptr;
@@ -44,7 +44,7 @@ LRUCache::LRUCache(const size_t& num_limit_HashingLF, const size_t& num_limit_sl
 	dmm_odd = new DeviceMemoryManager(num_limit_slice, io_config->slice_size);
 	dmm_even = new DeviceMemoryManager(num_limit_slice, io_config->slice_size);
 }
-LRUCache::~LRUCache()
+LRU_Cache::~LRU_Cache()
 {
 	printf("Destruct LRU Cache\n");
 	while (head_odd != tail_odd)
@@ -77,13 +77,13 @@ LRUCache::~LRUCache()
 	delete dmm_even;
 }
 
-int LRUCache::size(const INTERLACE_FIELD& field)
+int LRU_Cache::size(const INTERLACE_FIELD& field)
 {
 	if (field == ODD) return current_LRU_size_odd;
 	else return current_LRU_size_even;
 }
 
-void LRUCache::enqueue_wait_slice(SliceID id, uint8_t* data, const INTERLACE_FIELD& field)
+void LRU_Cache::enqueue_wait_slice(SliceID id, uint8_t* data, const INTERLACE_FIELD& field)
 {
 	if (field == ODD) {
 		waiting_slice_odd.push(std::make_pair(id, data));
@@ -93,7 +93,7 @@ void LRUCache::enqueue_wait_slice(SliceID id, uint8_t* data, const INTERLACE_FIE
 	}
 }
 
-int LRUCache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field)
+int LRU_Cache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field)
 {
 	Slice** hashmap;
 	uint8_t** h_devPtr_hashmap;
@@ -188,7 +188,7 @@ int LRUCache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field
 	}
 }
 
-void LRUCache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_THREAD_STATE& p_h2d_thread_state, const INTERLACE_FIELD& field)
+void LRU_Cache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_THREAD_STATE& p_h2d_thread_state, const INTERLACE_FIELD& field)
 {
 	Slice** hashmap;
 	uint8_t** h_devPtr_hashmap;
@@ -281,17 +281,20 @@ void LRUCache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_TH
 	}
 }
 
-int LRUCache::synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream)
+int LRU_Cache::synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream)
 {
 	while (!waiting_slice_odd.empty())
 	{
 		SliceID id = waiting_slice_odd.front().first;
 		uint8_t* data = waiting_slice_odd.front().second;
-
+		put(id, data, ODD);
+		waiting_slice_odd.pop();
+		/*
 		if (window.pinned_memory_status > PINNED_LFU_NOT_AVAILABLE) {
 			put(id, data, ODD);
 			waiting_slice_odd.pop();
 		}
+		*/
 	}
 	cudaError_t err = cudaMemcpyAsync(d_devPtr_hashmap_odd, h_devPtr_hashmap_odd, io_config->LF_width / io_config->slice_width * io_config->LF_length * num_limit_HashingLF * sizeof(uint8_t*), cudaMemcpyHostToDevice, stream);
 	assert(err == cudaSuccess);
@@ -314,12 +317,12 @@ int LRUCache::synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream)
 	else return 0;
 }
 
-int LRUCache::get_hashmap_location(const SliceID& id)
+int LRU_Cache::get_hashmap_location(const SliceID& id)
 {
 	return id.lf_number * (io_config->LF_width / io_config->slice_width) * io_config->LF_length + id.image_number * (io_config->LF_width / io_config->slice_width) + id.slice_number;
 }
 
-int LRUCache::query_hashmap(const SliceID& id, const INTERLACE_FIELD& field)
+int LRU_Cache::query_hashmap(const SliceID& id, const INTERLACE_FIELD& field)
 {
 	Slice** hashmap;
 	if (field == ODD) hashmap = hashmap_odd;
@@ -330,7 +333,7 @@ int LRUCache::query_hashmap(const SliceID& id, const INTERLACE_FIELD& field)
 	else return slice_location;
 }
 
-bool LRUCache::isFull(const INTERLACE_FIELD& field)
+bool LRU_Cache::isFull(const INTERLACE_FIELD& field)
 {
 	if (field == ODD) {
 		if (this->current_LRU_size_odd < num_limit_slice)

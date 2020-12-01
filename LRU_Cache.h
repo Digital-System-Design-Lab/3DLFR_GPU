@@ -22,10 +22,10 @@ struct Slice
 	Slice* next;
 };
 
-class LRUCache {
+class LRU_Cache {
 public:
-	LRUCache(const size_t& num_limit_HashingLF, const size_t& num_limit_slice, IO_Config* config);
-	~LRUCache();
+	LRU_Cache(const size_t& num_limit_HashingLF, const size_t& num_limit_slice, IO_Config* config);
+	~LRU_Cache();
 
 	int query_hashmap(const SliceID& id, const INTERLACE_FIELD& field);
 	void enqueue_wait_slice(SliceID id, uint8_t* data, const INTERLACE_FIELD& field);

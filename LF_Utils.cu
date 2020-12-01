@@ -299,9 +299,9 @@ void getLocalPosition(int& localPosX, int& localPosY, const int& curPosX, const 
 
 void write_bmw_fname_array(std::string path) {
 	FILE* fp = fopen(path.c_str(), "w");
-	fprintf(fp, "std::string BMW_LF[392][4] = \n");
+	fprintf(fp, "std::string BMW_LF[336][4] = \n");
 	fprintf(fp, "{\n");
-	for (int i = 0; i < 392; i++) {
+	for (int i = 0; i < 336; i++) {
 		fprintf(fp, "\t{\n");
 
 		int f, r, b, l;
@@ -310,7 +310,7 @@ void write_bmw_fname_array(std::string path) {
 		fprintf(fp, "\t\t\"Column%d\",\n", r);
 		fprintf(fp, "\t\t\"Row%d\",\n", b);
 		fprintf(fp, "\t\t\"Column%d\"\n", l);
-		if (i == 391) fprintf(fp, "\t}\n");
+		if (i == 336) fprintf(fp, "\t}\n");
 		else fprintf(fp, "\t},\n");
 	}
 	fprintf(fp, "};");
