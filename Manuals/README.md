@@ -24,7 +24,7 @@ LF_Renderer ----+---- LRU_Cache --+-- Slice ---- SliceID
                     이러한 이유로 3)의 동기화 과정이 필요함.
                     GPU 커널은 PosX, PosY를 토대로 LF number/Image number/Slice number를 계산하며, 이 값으로 d_devPtr_hashmap에 접근해 slice의 픽셀에 접근함.
 
-* LFU__Window : Disk로부터 LF 파일을 Host memory로 읽어온다. 
+* LFU_Window : Disk로부터 LF 파일을 Host memory로 읽어온다. 
                 필요하다고 판단되는 부분의 LF 주소는 LRU 캐시로 보내지고, Slice 단위로 device에 전송됨.
 * LF_Rendering : 생성자에서 캐시, 윈도우 등이 초기화되고 background worker threads가 생성된다. (posX, posY)를 받아 do_rendering 함수에서 렌더링이 진행된다.
                   * 포지션 입력 - 렌더링 파라미터(출력 width 등) 계산 - 캐싱(2-1) - 동기화(3) - 렌더링
