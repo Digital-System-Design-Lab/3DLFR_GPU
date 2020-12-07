@@ -402,22 +402,5 @@ __global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t**
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = oddpel_ch1; // g 
 			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = oddpel_ch2; // r 
 		}
-
-		if (tw == 0) // for debug
-		{
-			outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 0] = 0; // b 
-			outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 1] = 0; // g 
-			outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 2] = 255; // r 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 0] = 0; // b 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = 0; // g 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = 255; // r
-		}
-		if (tw == output_width - 1) // for debug
-		{
-			outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 0] = 255; // b 
-			outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 1] = 0; // g 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 0] = 255; // b 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = 0; // g 
-		}
 	}
 }
