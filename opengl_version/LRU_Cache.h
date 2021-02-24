@@ -24,7 +24,7 @@ struct Slice
 
 class LRU_Cache {
 public:
-	LRU_Cache(const size_t& num_limit_HashingLF, IO_Config* config, H2D_THREAD_STATE* h2d_thread_state);
+	LRU_Cache(LF_Config* config, H2D_THREAD_STATE* h2d_thread_state);
 	~LRU_Cache();
 
 	int query_hashmap(const SliceID& id, const INTERLACE_FIELD& field);
@@ -57,8 +57,9 @@ private:
 
 	size_t current_LRU_size_odd;
 	size_t current_LRU_size_even;
-	size_t num_limit_slice;
-	size_t num_limit_HashingLF;
+	size_t slice_cache_capacity;
+	size_t slice_hashmap_capacity;
+	size_t interlaced_slice_size;
 
 	std::queue <std::pair<SliceID, uint8_t*>> waiting_slice_odd;
 	std::queue <std::pair<SliceID, uint8_t*>> waiting_slice_even;
@@ -66,7 +67,7 @@ private:
 	DeviceMemoryManager* dmm_odd;
 	DeviceMemoryManager* dmm_even;
 
-	IO_Config* io_config;
+	LF_Config* _config;
 
 	H2D_THREAD_STATE* state_h2d_thread;
 };

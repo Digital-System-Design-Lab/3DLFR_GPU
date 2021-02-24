@@ -19,21 +19,24 @@
 #include <mutex>
 #include <conio.h> // Keyboard input 
 
-#define LENGTH 50
-#define WIDTH 4096
-#define HEIGHT 2048
-#define SLICE_WIDTH 256
-#define OUTPUT_WIDTH 9000
 #define PI 3.14159274f
 
-struct IO_Config {
-	const size_t LF_width = 4096;
-	const size_t LF_height = 2048;
-	const size_t LF_length = 50;
-	const size_t slice_width = 512;
-	const size_t output_width = 9000;
-	const size_t slice_size = slice_width * LF_height * 3;
-};
+struct LF_Config {
+	LF_Config(std::string path_LF, std::string path_pixrange, size_t iw, size_t ih, size_t lf_len, size_t numLFs, size_t sw, double dpp)
+		: path_LightField(path_LF), path_PixelRange(path_pixrange), LF_width(iw), LF_height(ih), LF_length(lf_len), num_LFs(numLFs), slice_width(sw), DPP(dpp), output_width((size_t)(360.0/dpp)), slice_size(sw * ih * 3), LF_size(iw * ih * lf_len * 3) {};
+	
+	const std::string path_LightField;
+	const std::string path_PixelRange;
+	const size_t LF_width;
+	const size_t LF_height;
+	const size_t LF_length;
+	const size_t num_LFs;
+	const size_t slice_width;
+	const double DPP;
+	const size_t output_width;
+	const size_t slice_size;
+	const size_t LF_size;
+}; 
 
 class StopWatch {
 public:
@@ -43,13 +46,13 @@ private:
 	std::chrono::high_resolution_clock::time_point t0;
 };
 
-uint8_t* alloc_uint8(int size, std::string alloc_type);
+uint8_t* alloc_uint8(size_t size, std::string alloc_type);
 
 void free_uint8(uint8_t* buf, std::string alloc_type);
 
-int read_uint8(uint8_t* buf, std::string filename, int size = -1);
+int read_uint8(uint8_t* buf, std::string filename, size_t size = -1);
 
-int write_uint8(uint8_t* buf, std::string filename, int size = -1);
+int write_uint8(uint8_t* buf, std::string filename, size_t size = -1);
 
 double getEuclideanDist(int x, int y, int origX = 0, int origY = 0);
 
@@ -80,6 +83,14 @@ void find_LF_number_BMW(int& front, int& right, int& back, int& left, const int&
 void constructLF_interlace();
 
 void write_bmw_fname_array(std::string path = "./BMW_FilePath.h");
+
+int mround(int n, int m);
+
+size_t get_devmem_freespace();
+
+size_t get_devmem_totalpace();
+
+void query_CudaMemory();
 
 __device__ int dev_SignBitMasking(int l, int r);
 

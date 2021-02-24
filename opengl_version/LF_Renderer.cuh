@@ -30,11 +30,10 @@ typedef std::vector<SliceRange> SliceSet;
 
 class LF_Renderer {
 public:
-	LF_Renderer(const std::string& pixel_range_path, const std::string& LF_path, const int& initPosX = 150, const int& initPosY = 150, bool use_window = true, const size_t& limit_LF = 734);
+	LF_Renderer(const std::string& path_LF, const std::string& path_pixelrange, const size_t& iw, const size_t& ih, const size_t& lf_length, const size_t& num_LFs, const double& dpp, const int& initPosX = 150, const int& initPosY = 150, bool use_window = true);
 	~LF_Renderer();
 
 	uint8_t* do_rendering(int& newPosX, int& newPosY);
-	IO_Config get_configuration();
 	void terminate();
 	uint8_t* synthesized_view;
 
@@ -46,9 +45,8 @@ private:
 	void getNeighborList(std::vector<std::pair<int, int>>& nbrPosition, const int& curPosX, const int& curPosY);
 	std::pair<int, int> cache_slice(LRU_Cache& LRU, const LFU_Window& window, SliceSet slice_set[][100], const int& posX, const int& posY);
 	int cache_slice_in_background(LRU_Cache& LRU, const LFU_Window& window, SliceSet slice_set[][100], std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, const MAIN_THREAD_STATE& thread_state_main);
-	int find_slice_from_LF(const int& img, const int& slice);
-
-	IO_Config io_config;
+	size_t find_slice_from_LF(const int& img, const int& slice);
+	void generate_LFConfig(const std::string& path_LF, const std::string& path_pixelrange, const size_t& iw, const size_t& ih, const size_t& lf_len, const size_t& numLFs, const double& dpp);
 
 	int localPosX[4];
 	int localPosY[4];
@@ -62,6 +60,12 @@ private:
 	std::vector<std::pair<int, int>> nbrPosition;
 
 	SliceSet slice_set[100][100];
+
+	dim3 threadsPerBlock;
+	dim3 blocksPerGrid_F;
+	dim3 blocksPerGrid_R;
+	dim3 blocksPerGrid_B;
+	dim3 blocksPerGrid_L;
 	cudaStream_t stream_main, stream_h2d;
 
 	LRU_Cache* LRU;
@@ -74,6 +78,9 @@ private:
 	std::mutex mtx;
 	std::vector<std::thread> workers;
 	bool use_window;
+
+	LF_Config* config;
 };
 
+void cache_validity_check(int curPosX, int curPosY, SliceSet slice_set[][100], LFU_Window* window, LRU_Cache* LRU);
 #endif

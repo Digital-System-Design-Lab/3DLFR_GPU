@@ -1,45 +1,41 @@
 #include "LRU_Cache.h"
 
-LRU_Cache::LRU_Cache(const size_t& num_limit_HashingLF, IO_Config* config, H2D_THREAD_STATE* h2d_thread_state)
+LRU_Cache::LRU_Cache(LF_Config* config, H2D_THREAD_STATE* h2d_thread_state)
 {
 	cudaError_t err;
+	_config = config;
+	state_h2d_thread = h2d_thread_state;
 
-	this->state_h2d_thread = h2d_thread_state;
+	head_odd = nullptr;
+	tail_odd = nullptr;
+	head_even = nullptr;
+	tail_even = nullptr;
 
-	this->io_config = config;
-	this->head_odd = nullptr;
-	this->tail_odd = nullptr;
-	this->head_even = nullptr;
-	this->tail_even = nullptr;
+	interlaced_slice_size = _config->slice_size / 2;
+	slice_hashmap_capacity = _config->LF_width / _config->slice_width * _config->LF_length * _config->num_LFs;
+	current_LRU_size_odd = 0; // 현재 아이템 수
+	current_LRU_size_even = 0; // 현재 아이템 수
 
-	this->num_limit_HashingLF = num_limit_HashingLF; // 해싱 가능한 LF의 범위 (LF 0부터 시작)
-	this->num_limit_slice = (int)floor((4.0 * 1024 * 1024 * 1024) / (double)(config->slice_size) * 0.6);
-	this->current_LRU_size_odd = 0; // 현재 아이템 수
-	this->current_LRU_size_even = 0; // 현재 아이템 수
-
-	size_t max_num_items_in_hashmap = io_config->LF_width / io_config->slice_width * io_config->LF_length * num_limit_HashingLF;
-
-	hashmap_odd = new Slice*[max_num_items_in_hashmap];
-	hashmap_even = new Slice*[max_num_items_in_hashmap];
-	err = cudaMallocHost((void**)&h_devPtr_hashmap_odd, max_num_items_in_hashmap * sizeof(uint8_t*));
+	hashmap_odd = new Slice*[slice_hashmap_capacity];
+	hashmap_even = new Slice*[slice_hashmap_capacity];
+	err = cudaMallocHost((void**)&h_devPtr_hashmap_odd, slice_hashmap_capacity * sizeof(uint8_t*));
+	err = cudaMallocHost((void**)&h_devPtr_hashmap_even, slice_hashmap_capacity * sizeof(uint8_t*));
+	err = cudaMalloc((void**)&d_devPtr_hashmap_odd, slice_hashmap_capacity * sizeof(uint8_t*)); 
+	err = cudaMalloc((void**)&d_devPtr_hashmap_even, slice_hashmap_capacity * sizeof(uint8_t*));
 	assert(err == cudaSuccess);
-	err = cudaMallocHost((void**)&h_devPtr_hashmap_even, max_num_items_in_hashmap * sizeof(uint8_t*));
-	assert(err == cudaSuccess);
-	err = cudaMalloc((void**)&d_devPtr_hashmap_odd, max_num_items_in_hashmap * sizeof(uint8_t*));
-	assert(err == cudaSuccess);
-	err = cudaMalloc((void**)&d_devPtr_hashmap_even, max_num_items_in_hashmap * sizeof(uint8_t*));
-	assert(err == cudaSuccess);
-
-	for (int i = 0; i < max_num_items_in_hashmap; i++)
+	for (int i = 0; i < slice_hashmap_capacity; i++)
 	{
 		hashmap_odd[i] = nullptr;
 		hashmap_even[i] = nullptr;
 		h_devPtr_hashmap_odd[i] = nullptr;
 		h_devPtr_hashmap_even[i] = nullptr;
 	} // query를 host hashmap에 한 후, uint8_t* 결과만 d_ hashmap에 동기화
+	slice_cache_capacity = (size_t)((double)get_devmem_freespace() * 0.8) / _config->slice_size;
 
-	dmm_odd = new DeviceMemoryManager(num_limit_slice, io_config->slice_size / 2); // interlaced slice --> /=2
-	dmm_even = new DeviceMemoryManager(num_limit_slice, io_config->slice_size / 2);
+	dmm_odd = new DeviceMemoryManager(slice_cache_capacity, interlaced_slice_size); // interlaced slice --> /=2
+	dmm_even = new DeviceMemoryManager(slice_cache_capacity, interlaced_slice_size);
+
+	printf("optimal slice width = %d\nslice_cache_capacity = %d\n", _config->slice_width, slice_cache_capacity);
 }
 LRU_Cache::~LRU_Cache()
 {
@@ -105,6 +101,7 @@ int LRU_Cache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& fiel
 	Slice** tail;
 	size_t* current_LRU_size;
 	DeviceMemoryManager* dmm;
+
 	if (field == ODD) {
 		hashmap = hashmap_odd;
 		h_devPtr_hashmap = h_devPtr_hashmap_odd;
@@ -128,7 +125,7 @@ int LRU_Cache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& fiel
 	if (slice_location < 0) // Cache miss
 	{
 		int access_number = -1;
-		if (*current_LRU_size >= num_limit_slice) {
+		if (*current_LRU_size >= slice_cache_capacity) {
 			// cache full, evict head
 			hashmap[get_hashmap_location((*head)->id)] = nullptr;
 			h_devPtr_hashmap[get_hashmap_location((*head)->id)] = nullptr;
@@ -165,7 +162,7 @@ int LRU_Cache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& fiel
 		hashmap[get_hashmap_location(slice->id)] = slice;
 		uint8_t* d_slice = dmm->get_empty_space(slice->access_number);
 		
-		cudaError_t err = cudaMemcpy(d_slice, data, io_config->slice_size / 2, cudaMemcpyHostToDevice); // data 복사
+		cudaError_t err = cudaMemcpy(d_slice, data, this->interlaced_slice_size, cudaMemcpyHostToDevice); // data 복사
 		assert(err == cudaSuccess);
 		h_devPtr_hashmap[get_hashmap_location(slice->id)] = d_slice; // hashmap에 저장된 주소공간을 할당 후
 
@@ -224,11 +221,13 @@ void LRU_Cache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, const
 	int slice_location = query_hashmap(id, field);
 	if (slice_location < 0) {
 		// cache miss
-		if (*current_LRU_size >= num_limit_slice) {
+		int access_number = -1;
+		if (*current_LRU_size >= slice_cache_capacity) {
 			// cache full, evict head
 			hashmap[get_hashmap_location((*head)->id)] = nullptr;
 			h_devPtr_hashmap[get_hashmap_location((*head)->id)] = nullptr;
-			dmm->return_access_number((*head)->access_number);
+			access_number = (*head)->access_number;
+			// dmm->return_access_number((*head)->access_number);
 
 			Slice* tmp = (*head);
 			(*head)->next->prev = nullptr;
@@ -240,9 +239,9 @@ void LRU_Cache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, const
 
 		Slice* slice = new Slice;
 		slice->id = id;
-		if (field) slice->odd_data = data;
+		if (field == ODD) slice->odd_data = data;
 		else slice->even_data = data;
-		slice->access_number = dmm->rent_access_number();
+		slice->access_number = access_number < 0 ? dmm->rent_access_number() : access_number;
 
 		if ((*head) == nullptr) {
 			// No item in cache
@@ -260,9 +259,11 @@ void LRU_Cache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, const
 
 		hashmap[get_hashmap_location(slice->id)] = slice;
 		uint8_t* d_slice = dmm->get_empty_space(slice->access_number);
-		cudaError_t err = cudaMemcpyAsync(d_slice, data, io_config->slice_size, cudaMemcpyHostToDevice, stream); // data 복사
+		cudaError_t err = cudaMemcpyAsync(d_slice, data, this->interlaced_slice_size, cudaMemcpyHostToDevice, stream); // data 복사
 		*state_h2d_thread = H2D_THREAD_RUNNING;
-		cudaStreamSynchronize(stream); // this stream must block the host code
+		err = cudaStreamSynchronize(stream); // this stream must block the host code
+		assert(err == cudaSuccess);
+
 		h_devPtr_hashmap[get_hashmap_location(slice->id)] = d_slice; // hashmap에 저장된 주소공간을 할당 후
 
 		(*current_LRU_size)++;
@@ -295,7 +296,7 @@ int LRU_Cache::synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream)
 		put(id, data, ODD);
 		waiting_slice_odd.pop();
 	}
-	cudaError_t err = cudaMemcpyAsync(d_devPtr_hashmap_odd, h_devPtr_hashmap_odd, io_config->LF_width / io_config->slice_width * io_config->LF_length * num_limit_HashingLF * sizeof(uint8_t*), cudaMemcpyHostToDevice, stream);
+	cudaError_t err = cudaMemcpyAsync(d_devPtr_hashmap_odd, h_devPtr_hashmap_odd, _config->LF_width / _config->slice_width * _config->LF_length * _config->num_LFs * sizeof(uint8_t*), cudaMemcpyHostToDevice, stream);
 	assert(err == cudaSuccess);
 	cudaStreamSynchronize(stream);
 
@@ -307,7 +308,7 @@ int LRU_Cache::synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream)
 			put(id, data, EVEN);
 			waiting_slice_even.pop();
 		}
-		cudaError_t err = cudaMemcpyAsync(d_devPtr_hashmap_even, h_devPtr_hashmap_even, io_config->LF_width / io_config->slice_width * io_config->LF_length * num_limit_HashingLF * sizeof(uint8_t*), cudaMemcpyHostToDevice, stream);
+		cudaError_t err = cudaMemcpyAsync(d_devPtr_hashmap_even, h_devPtr_hashmap_even, _config->LF_width / _config->slice_width * _config->LF_length * _config->num_LFs * sizeof(uint8_t*), cudaMemcpyHostToDevice, stream);
 		assert(err == cudaSuccess);
 		cudaStreamSynchronize(stream);
 
@@ -318,7 +319,7 @@ int LRU_Cache::synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream)
 
 int LRU_Cache::get_hashmap_location(const SliceID& id)
 {
-	return id.lf_number * (io_config->LF_width / io_config->slice_width) * io_config->LF_length + id.image_number * (io_config->LF_width / io_config->slice_width) + id.slice_number;
+	return id.lf_number * (_config->LF_width / _config->slice_width) * _config->LF_length + id.image_number * (_config->LF_width / _config->slice_width) + id.slice_number;
 }
 
 int LRU_Cache::query_hashmap(const SliceID& id, const INTERLACE_FIELD& field)
@@ -335,12 +336,12 @@ int LRU_Cache::query_hashmap(const SliceID& id, const INTERLACE_FIELD& field)
 bool LRU_Cache::isFull(const INTERLACE_FIELD& field)
 {
 	if (field == ODD) {
-		if (this->current_LRU_size_odd < num_limit_slice)
+		if (this->current_LRU_size_odd < slice_cache_capacity)
 			return false;
 		else return true;
 	}
 	else {
-		if (this->current_LRU_size_even < num_limit_slice)
+		if (this->current_LRU_size_even < slice_cache_capacity)
 			return false;
 		else return true;
 	}

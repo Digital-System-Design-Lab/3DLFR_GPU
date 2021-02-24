@@ -1,22 +1,26 @@
 #include "LF_Utils.cuh"
 
-uint8_t* alloc_uint8(int size, std::string alloc_type) {
+uint8_t* alloc_uint8(size_t size, std::string alloc_type) {
+	cudaError_t err;
 	uint8_t* buf;
+	
 	if (alloc_type == "pinned") {
-		cudaMallocHost((void**)&buf, size);
+		err = cudaMallocHost((void**)&buf, size);
+		assert(err == cudaSuccess);
 		memset(buf, 0, size);
 	}
 	else if (alloc_type == "pageable") {
 		buf = new uint8_t[size]();
 		memset(buf, 0, size);
-
 	}
 	else if (alloc_type == "device") {
-		cudaMalloc((void**)&buf, size);
-		cudaMemset(buf, 0, size);
+		err = cudaMalloc((void**)&buf, size);
+		err = cudaMemset(buf, 0, size);
+		assert(err == cudaSuccess);
 	}
 	else if (alloc_type == "unified") {
-		cudaMallocManaged((void**)&buf, size);
+		err = cudaMallocManaged((void**)&buf, size);
+		assert(err == cudaSuccess);
 	}
 	else exit(1);
 
@@ -24,19 +28,23 @@ uint8_t* alloc_uint8(int size, std::string alloc_type) {
 }
 
 void free_uint8(uint8_t* buf, std::string alloc_type) {
+	cudaError_t err;
+
 	if (alloc_type == "pinned") {
-		cudaFreeHost(buf);
+		err = cudaFreeHost(buf);
+		assert(err == cudaSuccess);
 	}
 	else if (alloc_type == "pageable") {
 		delete[] buf;
 	}
 	else if (alloc_type == "device" || alloc_type == "unified") {
-		cudaFree(buf);
+		err = cudaFree(buf);
+		assert(err == cudaSuccess);
 	}
 	else exit(1);
 }
 
-int read_uint8(uint8_t* buf, std::string filename, int size)
+int read_uint8(uint8_t* buf, std::string filename, size_t size)
 {
 	int fd;
 	int ret;
@@ -80,7 +88,7 @@ int read_uint8(uint8_t* buf, std::string filename, int size)
 	return ret;
 }
 
-int write_uint8(uint8_t* buf, std::string filename, int size)
+int write_uint8(uint8_t* buf, std::string filename, size_t size)
 {
 	int fd;
 	if ((fd = open(filename.c_str(), O_WRONLY | O_BINARY)) < 0) return fd;
@@ -188,6 +196,7 @@ std::string FloatToFormattedString(float f)
 
 int preRendering(int x, int z)
 {
+	int width = 4096;
 	std::pair<int, int> range[4][50];
 
 	for (int i = 0; i < 4; i++)
@@ -238,15 +247,15 @@ int preRendering(int x, int z)
 			if (dir == 1 || dir == 2) P_1 = DATAW - P_1 - 1;
 			P_1 = clamp(P_1, 0, DATAW - 1);
 
-			float U = (theta_P * ((1.0f) / (180.0f))) * WIDTH / 2 + WIDTH / 2;
+			float U = (theta_P * ((1.0f) / (180.0f))) * width / 2 + width / 2;
 			int U_1 = (int)(roundf(U));
 
-			if (dir == 1) U_1 += WIDTH / 4;
-			if (dir == 2) U_1 += WIDTH / 2;
-			if (dir == 3) U_1 -= WIDTH / 4;
-			if (U_1 >= WIDTH) U_1 = U_1 - WIDTH;
-			else if (U_1 < 0) U_1 = U_1 + WIDTH;
-			U_1 = clamp(U_1, 0, WIDTH - 1);
+			if (dir == 1) U_1 += width / 4;
+			if (dir == 2) U_1 += width / 2;
+			if (dir == 3) U_1 -= width / 4;
+			if (U_1 >= width) U_1 = U_1 - width;
+			else if (U_1 < 0) U_1 = U_1 + width;
+			U_1 = clamp(U_1, 0, width - 1);
 
 			range[dir][P_1].first = U_1 < range[dir][P_1].first ? U_1 : range[dir][P_1].first;
 			range[dir][P_1].second = U_1 > range[dir][P_1].second ? U_1 : range[dir][P_1].second;
@@ -314,6 +323,32 @@ void write_bmw_fname_array(std::string path) {
 	}
 	fprintf(fp, "};");
 	fclose(fp);
+}
+
+size_t get_devmem_freespace()
+{
+	size_t free, total;
+	cudaMemGetInfo(&free, &total);
+
+	return free;
+}
+
+size_t get_devmem_totalpace()
+{
+	size_t free, total;
+	cudaMemGetInfo(&free, &total);
+
+	return total;
+}
+
+void query_CudaMemory()
+{
+	size_t free, total;
+	free = get_devmem_freespace();
+	total = get_devmem_totalpace();
+
+	cudaMemGetInfo(&free, &total);
+	printf("%d KB free of total %d KB\n", free / 1024, total / 1024);
 }
 
 void constructLF_interlace() { // BMW LF configuration.xlsx 참고
@@ -415,6 +450,11 @@ void constructLF_interlace() { // BMW LF configuration.xlsx 참고
 		fclose(fp_even);
 	}
 */
+}
+
+int mround(int n, int m)
+{
+	return ((int)(n + ((double)m / 2.0))) / m * m;
 }
 
 __device__ int dev_SignBitMasking(int l, int r)

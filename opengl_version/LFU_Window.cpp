@@ -1,27 +1,29 @@
 #include "LFU_Window.h"
 
-LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_field_size, const std::string& dir, DISK_READ_THREAD_STATE* disk_read_thread_state, bool use_window)
+LFU_Window::LFU_Window(LF_Config* config, const int& posX, const int& posY, DISK_READ_THREAD_STATE* disk_read_thread_state, bool use_window)
 {
+	_config = config;
+	this->interlaced_LF_size = _config->LF_size / 2;
+	this->LF_prefix = _config->path_LightField;
 	curLFUID = getLFUID(posX, posY);
 	this->state_disk_read_thread = disk_read_thread_state;
-	this->LF_prefix = dir;
 	
 	printf("Allocating pinned memory");
 	for (int i = 0; i < 2; i++) {
 		for (int j = 0; j < 4; j++) {
 			printf(".");
-			m_pinnedLFU[i][j] = alloc_uint8(light_field_size, "pinned");
+			m_pinnedLFU[i][j] = alloc_uint8(interlaced_LF_size, "pinned");
 		}
 	}
 	printf(" Complete\n");
 
 	for (int i = 0; i < 12; i++) {
 		if (i == 4 || i == 7) {
-			m_row[i].odd_field = alloc_uint8(light_field_size, "pageable");
+			m_row[i].odd_field = alloc_uint8(interlaced_LF_size, "pageable");
 			m_row[i].even_field = nullptr;
 			m_row[i].type = ROW;
 
-			m_col[i].odd_field = alloc_uint8(light_field_size, "pageable");
+			m_col[i].odd_field = alloc_uint8(interlaced_LF_size, "pageable");
 			m_col[i].even_field = nullptr;
 			m_col[i].type = COL;
 
@@ -71,7 +73,7 @@ LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_fie
 
 	printf("Reading Even Field LFs");
 	for (int dir = 0; dir < 4; dir++) {
-		memcpy(m_pinnedLFU[ODD][dir], m_center->LF[dir]->odd_field, light_field_size);
+		memcpy(m_pinnedLFU[ODD][dir], m_center->LF[dir]->odd_field, interlaced_LF_size);
 		read_uint8(m_center->LF[dir]->even_field, BMW_LF[m_center->id][dir], EVEN, posX, posY);
 		m_center->LF[dir]->progress = LF_READ_PROGRESS_EVEN_FIELD_PREPARED;
 		printf(".");
@@ -81,11 +83,13 @@ LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_fie
 	printf("Complete\n");
 }
 
-LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_field_size, const std::string& dir, DISK_READ_THREAD_STATE* disk_read_thread_state)
+LFU_Window::LFU_Window(LF_Config* config, const int& posX, const int& posY, DISK_READ_THREAD_STATE* disk_read_thread_state)
 {
+	_config = config;
+	this->interlaced_LF_size = _config->LF_size / 2;
+	this->LF_prefix = _config->path_LightField;
 	curLFUID = getLFUID(posX, posY);
 	this->state_disk_read_thread = disk_read_thread_state;
-	this->LF_prefix = dir;
 
 	int LFUIDs[9];
 	LFUIDs[N] = curLFUID + 1;
@@ -97,7 +101,7 @@ LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_fie
 	LFUIDs[W] = curLFUID - 56;
 	LFUIDs[NW] = curLFUID - 56 + 1;
 	LFUIDs[8] = curLFUID;
-	construct_window(light_field_size);
+	construct_window(interlaced_LF_size);
 
 	printf("Reading Odd Field LFs");
 	for (int i = 0; i < 9; i++)
@@ -120,7 +124,7 @@ LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_fie
 
 	printf("Reading Even Field LFs");
 	for (int dir = 0; dir < 4; dir++) {
-		memcpy(m_pinnedLFU[ODD][dir], m_center->LF[dir]->odd_field, light_field_size);
+		memcpy(m_pinnedLFU[ODD][dir], m_center->LF[dir]->odd_field, interlaced_LF_size);
 		read_uint8(m_center->LF[dir]->even_field, BMW_LF[m_center->id][dir], EVEN, posX, posY);
 		m_center->LF[dir]->progress = LF_READ_PROGRESS_EVEN_FIELD_PREPARED;
 		printf(".");
@@ -636,51 +640,35 @@ int LFU_Window::update_window(const int& curPosX, const int& curPosY, const size
 	return 0;
 }
 
-int LFU_Window::read_uint8(uint8_t* buf, std::string filename, const INTERLACE_FIELD& field, const int& curPosX, const int& curPosY, int size) {
-	int fd;
-	int ret;
+size_t LFU_Window::read_uint8(uint8_t* buf, std::string filename, const INTERLACE_FIELD& field, const int& curPosX, const int& curPosY, size_t size) {
+	size_t ret;
 	filename = LF_prefix + filename;
 	if (field == ODD) filename += "_odd.bgr";
 	else filename += "_even.bgr";
 
-	fd = open(filename.c_str(), O_RDONLY | O_BINARY);
-	ret = fd;
+	FILE* fp = fopen(filename.c_str(), "rb");
+	ret = fp == nullptr ? -1 : 0;
 	if (ret < 0) {
 		printf("open failed, %s\n", filename.c_str());
 		assert(ret == 0);
 		exit(1);
 	}
-	if (size < 0) {
-		if ((ret = lseek(fd, 0, SEEK_END)) < 0) {
-			printf("SEEK_END failed, %s\n", filename.c_str());
-			assert(ret == 0);
-			exit(1);
-		}
-		if ((ret = tell(fd)) < 0) {
-			printf("tell failed, %s\n", filename.c_str());
-			assert(ret == 0);
-			exit(1);
-		}
-		size = ret;
-		if ((ret = lseek(fd, 0, SEEK_SET)) < 0) {
-			printf("SEEK_SET failed, %s\n", filename.c_str());
-			assert(ret == 0);
-			exit(1);
-		}
+	if (size == 0) {
+		size = this->interlaced_LF_size;
 	}
-	const int num_chunk = 50;
-	const int chunk_size = size / num_chunk;
-	int next_chunk_begin = 0;
+	const size_t num_chunk = 50;
+	const size_t chunk_size = size / num_chunk;
+	size_t next_chunk_begin = 0;
 	for (int i = 0; i < num_chunk; i++) {
 		if (curLFUID != getLFUID(curPosX, curPosY)) {
 			*state_disk_read_thread = DISK_READ_THREAD_CENTER_LFU_READING;
 			printf("LF read break\n");
 			return -1; // Interrupt
 		}
-		ret += read(fd, buf + next_chunk_begin, sizeof(uint8_t) * chunk_size); // x64
+		ret += fread(buf + next_chunk_begin, 1, sizeof(uint8_t) * chunk_size, fp); // x64
 		next_chunk_begin += chunk_size;
 	}
-	close(fd);
+	fclose(fp);
 
 	if (ret != size) {
 		printf("read failed, %s\n", filename.c_str());

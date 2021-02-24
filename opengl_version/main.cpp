@@ -8,6 +8,29 @@
 #include <helper_functions.h>
 #include <rendercheck_gl.h>
 
+#define RESOLUTION 8
+#if RESOLUTION == 1
+#define WIDTH 1024
+#define HEIGHT 512
+#define PATH_LF "S:/BMW_1K/"
+#define PATH_PIXEL_RANGE "S:/PixelRange_1K/"
+#elif RESOLUTION == 2
+#define WIDTH 2048
+#define HEIGHT 1024
+#define PATH_LF "S:/BMW_2K/"
+#define PATH_PIXEL_RANGE "S:/PixelRange_2K/"
+#elif RESOLUTION == 4
+#define WIDTH 4096
+#define HEIGHT 2048
+#define PATH_LF "S:/BMW_4K/"
+#define PATH_PIXEL_RANGE "S:/PixelRange_4K/"
+#elif RESOLUTION == 8
+#define WIDTH 7680
+#define HEIGHT 4320
+#define PATH_LF "S:/BMW_8K/"
+#define PATH_PIXEL_RANGE "S:/PixelRange_8K/"
+#endif
+
 GLuint _GL_pbo = NULL;
 GLuint _GL_texture = NULL;
 std::string _GL_window_name;
@@ -26,10 +49,12 @@ int _GL_pressed_key = -1;
 
 
 int curPosX = 201;
-int curPosY = 250;
-std::string PixelRange = "S:/PixelRange_CUDA/";
-std::string LF = "S:/BMW_4K/";
-LF_Renderer renderer(PixelRange, LF, curPosX, curPosY, false);
+int curPosY = 298;
+int LF_length = 50;
+int num_LFs = 734;
+double dpp = 0.04;
+
+LF_Renderer renderer(PATH_LF, PATH_PIXEL_RANGE, WIDTH, HEIGHT, LF_length, num_LFs, dpp, curPosX, curPosY, false);
 
 void initDisplay(int width, int height, int channels);
 void display();
@@ -47,10 +72,8 @@ void _initGL();
 
 int main()
 {
-
-
 #if 1
-	initDisplay(9000, 2048, 3);
+	initDisplay((int)(360.0 / dpp), HEIGHT, 3);
 	display();
 #else
 	double elapsed_time[99];
@@ -135,9 +158,15 @@ void _keyboardFunction(unsigned char key, int x, int y)
 	case 'q': {	curPosX--; curPosY++; } break;
 	case 'a': {	curPosX--; } break;
 	case 'z': {	curPosX--; curPosY--; } break;
-	case 27: {	printf("Terminate\n"); exit(0);	}
+	case 27: {	
+		printf("Terminate\n"); 
+		renderer.terminate();
+		exit(0);	
+	}
 	default: break;
 	}
+	curPosX = clamp(curPosX, (curPosX / 100) * 100 + 1, (curPosX / 100) * 100 + 99);
+	curPosY = clamp(curPosY, (curPosY / 100) * 100 + 1, (curPosY / 100) * 100 + 99);
 	glutPostRedisplay();
 }
 
@@ -201,6 +230,7 @@ void _initCUDA()
 
 void initDisplay(int width, int height, int channels)
 {
+
 	_GL_width = width;
 	_GL_height = height;
 	_GL_channel = channels;
@@ -248,7 +278,7 @@ void _display()
 {
 	StopWatch latencyE2E;
 	latencyE2E.Start();
-
+	
 	_runCUDA(renderer.do_rendering(curPosX, curPosY));
 
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -262,10 +292,25 @@ void _display()
 	glTexCoord2f(1.0f, 1.0f);    glVertex2f(1.0f, 0.0f);
 	glEnd();
 	glutSwapBuffers();
+
 	double ms = latencyE2E.Stop();
 	std::string windowTitle = "Position: (" + std::to_string(curPosX) + "," + std::to_string(curPosY) + ") " + std::to_string(ms) + "ms, " + std::to_string(1 / ms * 1000) + "FPS";
 	glutSetWindowTitle(windowTitle.c_str());
-	printf("%f ms (%.3f Hz)\n", ms, (1 / ms * 1000));
+
+#if 0
+	/* log elapsed time */
+	FILE* file_elapsedT = fopen(("./experiments/elapsed/prefetch/" + std::to_string(renderer.io_config.slice_width) + "_time_prefetch.log").c_str(), "a");
+	if(curPosX != 201)
+		fprintf(file_elapsedT, "%d\t%d\t%f\n", curPosX, curPosY, ms);
+	fclose(file_elapsedT);
+	/* log hit rate - end*/
+#endif
+	if (curPosX == 299) {
+		renderer.terminate(); 
+		exit(1);
+	}
+
+// 	printf("%f ms (%.3f Hz)\n", ms, (1 / ms * 1000));
 }
 
 void display()

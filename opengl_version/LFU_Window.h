@@ -22,17 +22,17 @@ struct LFU {
 // 디스크에서 호스트 메모리로 LF 데이터를 읽어오는(Background) 클래스
 class LFU_Window {
 public:
-	LFU_Window(const int& posX, const int& posY, const size_t& light_field_size, const std::string& dir, DISK_READ_THREAD_STATE* disk_read_thread_state);
-	LFU_Window(const int& posX, const int& posY, const size_t& light_field_size, const std::string& dir, DISK_READ_THREAD_STATE* disk_read_thread_state, bool use_window);
+	LFU_Window(LF_Config* config, const int& posX, const int& posY, DISK_READ_THREAD_STATE* disk_read_thread_state);
+	LFU_Window(LF_Config* config, const int& posX, const int& posY, DISK_READ_THREAD_STATE* disk_read_thread_state, bool use_window);
 	~LFU_Window();
 	int update_window(const int& curPosX, const int& curPosY, const size_t& light_field_size, const MAIN_THREAD_STATE& main_thread_state);
 
 	LFU* m_center;
-	uint8_t* m_pinnedLFU[2][4];
+	uint8_t* m_pinnedLFU[2][4]; // [ODD/EVEN][F/R/B/L]
 	PINNED_LFU_STATUS pinned_memory_status;
 
 private:
-	int read_uint8(uint8_t* buf, std::string filename, const INTERLACE_FIELD& field, const int& curPosX, const int& curPosY, int size = -1);
+	size_t read_uint8(uint8_t* buf, std::string filename, const INTERLACE_FIELD& field, const int& curPosX, const int& curPosY, size_t size = 0);
 	void construct_window(const size_t& light_field_size);
 
 	int curLFUID;
@@ -42,7 +42,8 @@ private:
 	std::string LF_prefix;
 
 	DISK_READ_THREAD_STATE* state_disk_read_thread;
-
+	LF_Config* _config;
+	size_t interlaced_LF_size;
 	std::string BMW_LF[336][4] =
 	{
 		{
