@@ -86,6 +86,8 @@ void write_bmw_fname_array(std::string path = "./BMW_FilePath.h");
 
 int mround(int n, int m);
 
+double differentiation(double prev, double cur, double timespan);
+
 size_t get_devmem_freespace();
 
 size_t get_devmem_totalpace();

@@ -38,3 +38,9 @@ uint8_t* DeviceMemoryManager::get_empty_space(const size_t& access_number)
 {
 	return dev_slice_buffer + access_number * slice_size;
 }
+
+void DeviceMemoryManager::init()
+{
+	cudaMemset(this->dev_slice_buffer, 0, slice_size * num_of_slice);
+	this->last_access_number = 0;
+}

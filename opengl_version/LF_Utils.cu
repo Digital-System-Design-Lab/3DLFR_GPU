@@ -457,6 +457,11 @@ int mround(int n, int m)
 	return ((int)(n + ((double)m / 2.0))) / m * m;
 }
 
+double differentiation(double prev, double cur, double timespan)
+{
+	return (cur - prev) / timespan;
+}
+
 __device__ int dev_SignBitMasking(int l, int r)
 {
 	return !!((l - r) & 0x80000000); // if l < r : return 1

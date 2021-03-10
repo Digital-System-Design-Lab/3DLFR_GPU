@@ -29,14 +29,13 @@ public:
 
 	int query_hashmap(const SliceID& id, const INTERLACE_FIELD& field);
 	void enqueue_wait_slice(SliceID id, uint8_t* data, const INTERLACE_FIELD& field);
-
 	int put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field);
 	void put(const SliceID& id, uint8_t* data, cudaStream_t stream, const INTERLACE_FIELD& field); // for Worker thread
-
 	int synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream);
-	int size(const INTERLACE_FIELD& field);
-
+	size_t size(const INTERLACE_FIELD& field);
+	size_t get_slice_cache_capacity();
 	bool isFull(const INTERLACE_FIELD& field);
+	int flush_cache();
 
 	uint8_t* find_slice_in_hashmap(SliceID id);
 

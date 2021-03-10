@@ -76,10 +76,14 @@ LRU_Cache::~LRU_Cache()
 	delete dmm_even;
 }
 
-int LRU_Cache::size(const INTERLACE_FIELD& field)
+size_t LRU_Cache::size(const INTERLACE_FIELD& field)
 {
 	if (field == ODD) return current_LRU_size_odd;
 	else return current_LRU_size_even;
+}
+
+size_t LRU_Cache::get_slice_cache_capacity() {
+	return this->slice_cache_capacity;
 }
 
 void LRU_Cache::enqueue_wait_slice(SliceID id, uint8_t* data, const INTERLACE_FIELD& field)
@@ -224,10 +228,10 @@ void LRU_Cache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, const
 		int access_number = -1;
 		if (*current_LRU_size >= slice_cache_capacity) {
 			// cache full, evict head
+			// printf("evict an item in cache\n");
 			hashmap[get_hashmap_location((*head)->id)] = nullptr;
 			h_devPtr_hashmap[get_hashmap_location((*head)->id)] = nullptr;
 			access_number = (*head)->access_number;
-			// dmm->return_access_number((*head)->access_number);
 
 			Slice* tmp = (*head);
 			(*head)->next->prev = nullptr;
@@ -351,4 +355,35 @@ uint8_t* LRU_Cache::find_slice_in_hashmap(SliceID id)
 {
 	if (h_devPtr_hashmap_odd[get_hashmap_location(id)] == nullptr) return nullptr;
 	else return h_devPtr_hashmap_odd[get_hashmap_location(id)];
+}
+
+int LRU_Cache::flush_cache() // ¹Ì¿Ï¼º
+{
+	while (head_odd != tail_odd)
+	{
+		Slice* tmp = head_odd;
+		this->hashmap_odd[this->get_hashmap_location(tmp->id)] = nullptr;
+		h_devPtr_hashmap_odd[this->get_hashmap_location(tmp->id)] = nullptr;
+		head_odd->next->prev = nullptr;
+		head_odd = head_odd->next;
+		delete tmp;
+	}
+	delete tail_odd;
+	while (head_even != tail_even)
+	{
+		Slice* tmp = head_even;
+		this->hashmap_even[this->get_hashmap_location(tmp->id)] = nullptr;
+		h_devPtr_hashmap_even[this->get_hashmap_location(tmp->id)] = nullptr;
+		head_even->next->prev = nullptr;
+		head_even = head_even->next;
+		delete tmp;
+	}
+	delete tail_even;
+
+	this->current_LRU_size_odd = 0;
+	this->current_LRU_size_even = 0;
+	this->dmm_odd->init();
+	this->dmm_even->init();
+
+	return 0;
 }

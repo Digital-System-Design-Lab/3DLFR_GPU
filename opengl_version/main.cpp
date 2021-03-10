@@ -8,7 +8,7 @@
 #include <helper_functions.h>
 #include <rendercheck_gl.h>
 
-#define RESOLUTION 8
+#define RESOLUTION 4
 #if RESOLUTION == 1
 #define WIDTH 1024
 #define HEIGHT 512
@@ -47,14 +47,19 @@ int _GL_waitKeyCalled = 0;
 int _GL_timeDelay = 0;
 int _GL_pressed_key = -1;
 
+int pathcnt = 0;
+int count = 0;
 
-int curPosX = 201;
+int stride = 4;
+
+int curPosX = 250;
 int curPosY = 298;
 int LF_length = 50;
 int num_LFs = 734;
 double dpp = 0.04;
 
-LF_Renderer renderer(PATH_LF, PATH_PIXEL_RANGE, WIDTH, HEIGHT, LF_length, num_LFs, dpp, curPosX, curPosY, false);
+// LF_Renderer renderer(PATH_LF, PATH_PIXEL_RANGE, WIDTH, HEIGHT, LF_length, num_LFs, dpp, stride, curPosX, curPosY, false);
+LF_Renderer renderer(PATH_LF, PATH_PIXEL_RANGE, WIDTH, HEIGHT, LF_length, num_LFs, dpp, stride, curPosX, curPosY, true);
 
 void initDisplay(int width, int height, int channels);
 void display();
@@ -70,34 +75,12 @@ void _closingFuntion(); // need to register a callback function
 void _initCUDA();
 void _initGL();
 
+void autoMove(int path);
+
 int main()
 {
-#if 1
 	initDisplay((int)(360.0 / dpp), HEIGHT, 3);
 	display();
-#else
-	double elapsed_time[99];
-	for (int x = curPosX; x < 300; x++)
-	{
-		sw.Start();
-		uint8_t* synthesized_view = renderer.do_rendering(x, curPosY);
-		double ms = sw.Stop();
-		printf("%f ms (%.3f Hz)\n", ms, (1 / ms * 1000));
-		elapsed_time[(x % 100) - 1] = ms;
-
-		FILE* fp = fopen(("./result/view/[9000x2048] " + std::to_string(x) + "_" + std::to_string(curPosY) + ".bgr").c_str(), "wb");
-		fwrite(synthesized_view, 1, 9000 * 2048 * 3, fp);
-		fclose(fp);
-	}
-
-	/* log elapsed time */
-	FILE* file_time_log = fopen(("./experiments/elapsed/" + std::to_string(renderer.get_configuration().slice_width) + "_elapsed_time.log").c_str(), "w");
-	for (int i = 0; i < 99; i++) {
-		fprintf(file_time_log, "%f\n", elapsed_time[i]);
-	}
-	fclose(file_time_log);
-	/* log elapsed time - end*/
-#endif
 	renderer.terminate();
 
 	return 0;
@@ -150,19 +133,19 @@ void _keyboardFunction(unsigned char key, int x, int y)
 
 	switch (key)
 	{
-	case 'x': {			curPosY--; } break;
-	case 'c': {	curPosX++;	curPosY--; } break;
-	case 'd': {	curPosX++;			} break;
-	case 'e': {	curPosX++;	curPosY++;	} break;
-	case 'w': {			curPosY++; } break;
-	case 'q': {	curPosX--; curPosY++; } break;
-	case 'a': {	curPosX--; } break;
-	case 'z': {	curPosX--; curPosY--; } break;
-	case 27: {	
-		printf("Terminate\n"); 
+	case 'x': {	curPosY -= stride; } break;
+	case 'c': {	curPosX += stride;	curPosY -= stride; } break;
+	case 'd': {	curPosX += stride; } break;
+	case 'e': {	curPosX += stride;	curPosY += stride; } break;
+	case 'w': {	curPosY += stride; } break;
+	case 'q': {	curPosX -= stride; curPosY += stride; } break;
+	case 'a': {	curPosX -= stride; } break;
+	case 'z': {	curPosX -= stride; curPosY -= stride; } break;
+	case 27: {
+		printf("Terminate\n");
 		renderer.terminate();
-		exit(0);	
-	}
+		exit(0);
+	} break;
 	default: break;
 	}
 	curPosX = clamp(curPosX, (curPosX / 100) * 100 + 1, (curPosX / 100) * 100 + 99);
@@ -278,13 +261,13 @@ void _display()
 {
 	StopWatch latencyE2E;
 	latencyE2E.Start();
-	
+
 	_runCUDA(renderer.do_rendering(curPosX, curPosY));
 
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, _GL_pbo);
 	glBindTexture(GL_TEXTURE_2D, _GL_texture);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, _GL_width, _GL_height, _GL_channel_sequence, _GL_image_depth, NULL)             ;
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, _GL_width, _GL_height, _GL_channel_sequence, _GL_image_depth, NULL);
 	glBegin(GL_QUADS);
 	glTexCoord2f(0.0f, 1.0f);    glVertex2f(0.0f, 0.0f);
 	glTexCoord2f(0.0f, 0.0f);    glVertex2f(0.0f, 1.0f);
@@ -297,18 +280,20 @@ void _display()
 	std::string windowTitle = "Position: (" + std::to_string(curPosX) + "," + std::to_string(curPosY) + ") " + std::to_string(ms) + "ms, " + std::to_string(1 / ms * 1000) + "FPS";
 	glutSetWindowTitle(windowTitle.c_str());
 
+	// autoMove(6);
+	// if (curPosX >= 299 || curPosY >= 299 || curPosX <= 200 || curPosY <= 200 || count == 50) {
+	// 	renderer.terminate();
+	// 	exit(0);
+	// }
 #if 0
 	/* log elapsed time */
 	FILE* file_elapsedT = fopen(("./experiments/elapsed/prefetch/" + std::to_string(renderer.io_config.slice_width) + "_time_prefetch.log").c_str(), "a");
-	if(curPosX != 201)
+	if (curPosX != 201)
 		fprintf(file_elapsedT, "%d\t%d\t%f\n", curPosX, curPosY, ms);
 	fclose(file_elapsedT);
 	/* log hit rate - end*/
 #endif
-	if (curPosX == 299) {
-		renderer.terminate(); 
-		exit(1);
-	}
+
 
 // 	printf("%f ms (%.3f Hz)\n", ms, (1 / ms * 1000));
 }
@@ -317,4 +302,144 @@ void display()
 {
 	glutDisplayFunc(_display);
 	glutMainLoop();
+}
+
+void autoMove(int path)
+{
+	switch (path)
+	{
+	case 1: { // ¡æ
+		curPosX += stride;
+	} break;
+	case 2: { // ¡é
+		curPosY -= stride;
+	} break;
+	case 3: { // ¡æ¢×
+		if (pathcnt == 0)
+		{
+			curPosX += stride;
+		}
+		else
+		{
+			curPosX -= stride;
+			curPosY -= stride;
+			if (pathcnt == 1) pathcnt = -1;
+		}
+
+	} break;
+
+	case 4: { // ¢Ù¢×¡è
+		if (pathcnt == 0)
+		{
+			curPosX += stride;
+			curPosY -= stride;
+		}
+		else if (pathcnt == 1)
+		{
+			curPosX -= stride;
+			curPosY -= stride;
+		}
+
+		else if (pathcnt == 2)
+		{
+			curPosY += stride;
+			pathcnt = -1;
+		}
+
+	} break;
+	case 5: { // ¡æ¡ç
+		if (pathcnt == 0)
+		{
+			curPosX += stride;
+		}
+		else if(pathcnt == 1)
+		{
+			curPosX -= stride;
+			pathcnt = -1;
+		}
+
+	} break;
+	case 6: { // ¡æ¡æ¡é¡é
+		if (pathcnt == 0 || pathcnt == 1)
+		{
+			curPosX += stride;
+		}
+		else if (pathcnt == 2 || pathcnt == 3)
+		{
+			curPosY -= stride;
+			if(pathcnt == 3)
+				pathcnt = -1;
+		}
+
+	} break;
+	case 7: { // octagonal
+		if (pathcnt == 0) {
+			curPosX += stride;
+		}
+		else if (pathcnt == 1) {
+			curPosX += stride;
+			curPosY -= stride;
+		}
+		else if (pathcnt == 2) {
+			curPosY -= stride;
+		}
+		else if (pathcnt == 3) {
+			curPosX -= stride;
+			curPosY -= stride;
+		}
+		else if (pathcnt == 4) {
+			curPosX -= stride;
+		}
+		else if (pathcnt == 5) {
+			curPosX -= stride;
+			curPosY += stride;
+		}
+		else if (pathcnt == 6) {
+			curPosY += stride;
+		}
+		else if (pathcnt == 7) {
+			curPosX += stride;
+			curPosY += stride;
+			pathcnt = -1;
+		}
+
+	} break;
+	case 8: {
+		srand((unsigned int)time(NULL));
+		int num = rand() % 8;
+		if (num == 0) {
+			curPosY += stride;
+		}
+		else if (num == 1) {
+			curPosX += stride;
+			curPosY += stride;
+		}
+		else if (num == 2) {
+			curPosX += stride;
+		}
+		else if (num == 3) {
+			curPosX += stride;
+			curPosY -= stride;
+		}
+		else if (num == 4) {
+			curPosY -= stride;
+		}
+		else if (num == 5) {
+			curPosX -= stride;
+			curPosY -= stride;
+		}
+		else if (num == 6) {
+			curPosX -= stride;
+		}
+		else if (num == 7) {
+			curPosX -= stride;
+			curPosY += stride;
+		}
+
+	} break;
+	}
+	glutPostRedisplay();
+
+	count++;
+	pathcnt++;
 }

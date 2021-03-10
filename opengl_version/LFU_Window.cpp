@@ -7,7 +7,7 @@ LFU_Window::LFU_Window(LF_Config* config, const int& posX, const int& posY, DISK
 	this->LF_prefix = _config->path_LightField;
 	curLFUID = getLFUID(posX, posY);
 	this->state_disk_read_thread = disk_read_thread_state;
-	
+
 	printf("Allocating pinned memory");
 	for (int i = 0; i < 2; i++) {
 		for (int j = 0; j < 4; j++) {

@@ -1,9 +1,11 @@
 #include "LF_Renderer.cuh"
 
 // #define USE_UNIFIED_MEMORY
+#define PREFETCHING_MODE 0
 
-LF_Renderer::LF_Renderer(const std::string& path_LF, const std::string& path_pixelrange, const size_t& iw, const size_t& ih, const size_t& lf_length, const size_t& num_LFs, const double& dpp, const int& initPosX, const int& initPosY, bool use_window)
+LF_Renderer::LF_Renderer(const std::string& path_LF, const std::string& path_pixelrange, const size_t& iw, const size_t& ih, const size_t& lf_length, const size_t& num_LFs, const double& dpp, const int& stride, const int& initPosX, const int& initPosY, bool use_window)
 {
+	this->stride = stride;
 	size_t output_width = (size_t)(360.0 / dpp);
 #ifdef USE_UNIFIED_MEMORY
 	synthesized_view = alloc_uint8(output_width * ih * 3, "unified"); // output view를 위한 버퍼
@@ -22,14 +24,19 @@ LF_Renderer::LF_Renderer(const std::string& path_LF, const std::string& path_pix
 	curPosY = initPosY;
 	prevPosX = curPosX;
 	prevPosY = curPosY;
-	this->nbrPosition.resize(8); // 현재 viewpoint의 8개 이웃 
-	getNeighborList(nbrPosition, curPosX, curPosY);
+	prevprevPosX = prevPosX;
+	prevprevPosY = prevPosY;
+	prevprevprevPosX = prevprevPosX;
+	prevprevprevPosY = prevprevPosY;
+
+	this->candidates_of_future_position.resize(8); // 현재 viewpoint의 8개 이웃 
+	predictFuturePosition();
 
 	load_slice_set(this->slice_set, config->path_PixelRange); // ./PixelRange의 파일을 읽고 pixel range를 load
 
 	LFU_Window* lfu_window;
 	if (this->use_window == true)
-		lfu_window = new LFU_Window(this->config, curPosX, curPosY, &state_disk_read_thread); // 3x3 형태의 LFU Window, 2D listaaa 
+		lfu_window = new LFU_Window(this->config, curPosX, curPosY, &state_disk_read_thread); // 3x3 형태의 LFU Window, 2D list
 	else
 		lfu_window = new LFU_Window(this->config, curPosX, curPosY, &state_disk_read_thread, false); // 3x3 형태의 LFU Window, 2D list
 	this->window = lfu_window;
@@ -40,10 +47,14 @@ LF_Renderer::LF_Renderer(const std::string& path_LF, const std::string& path_pix
 
 	cudaStreamCreate(&stream_main); // CUDA Concurrency를 위한 streams
 	cudaStreamCreate(&stream_h2d);
-	// workers.push_back(std::thread(&LF_Renderer::loop_nbrs_h2d, this, std::ref(*LRU), std::ref(*window), slice_set, std::ref(nbrPosition), stream_h2d, std::ref(state_main_thread), std::ref(mtx)));
+
+	// fill_cache();
+
+#if PREFETCHING_MODE != 0
+	workers.push_back(std::thread(&LF_Renderer::loop_nbrs_h2d, this, std::ref(*LRU), std::ref(*window), slice_set, std::ref(candidates_of_future_position), stream_h2d, std::ref(state_main_thread), std::ref(mtx)));
+#endif
 	// H2D, LF Read를 위한 worker threads
 	if (this->use_window == true) {
-		workers.push_back(std::thread(&LF_Renderer::loop_nbrs_h2d, this, std::ref(*LRU), std::ref(*window), slice_set, std::ref(nbrPosition), stream_h2d, std::ref(state_main_thread), std::ref(mtx)));
 		workers.push_back(std::thread(&LF_Renderer::loop_read_disk, this, std::ref(*window), std::ref(curPosX), std::ref(curPosY), std::ref(light_field_size), std::ref(state_main_thread)));
 	}
 
@@ -73,6 +84,7 @@ LF_Renderer::~LF_Renderer() {
 // 렌더링 함수 
 uint8_t* LF_Renderer::do_rendering(int& newPosX, int& newPosY)
 {
+	if (curPosX == newPosX && curPosY == newPosY) return this->synthesized_view;
 	StopWatch sw;
 	sw.Start();
 	if (this->use_window == false) {
@@ -85,6 +97,10 @@ uint8_t* LF_Renderer::do_rendering(int& newPosX, int& newPosY)
 			return this->synthesized_view;
 		}
 		else {
+			this->prevprevprevPosX = prevprevPosX;
+			this->prevprevprevPosY = prevprevPosY;
+			this->prevprevPosX = prevPosX;
+			this->prevprevPosY = prevPosY;
 			this->prevPosX = curPosX;
 			this->prevPosY = curPosY;
 			this->curPosX = newPosX;
@@ -92,6 +108,10 @@ uint8_t* LF_Renderer::do_rendering(int& newPosX, int& newPosY)
 		}
 	}
 	else {
+		this->prevprevprevPosX = prevprevPosX;
+		this->prevprevprevPosY = prevprevPosY;
+		this->prevprevPosX = prevPosX;
+		this->prevprevPosY = prevPosY;
 		this->prevPosX = curPosX;
 		this->prevPosY = curPosY;
 		this->curPosX = newPosX;
@@ -104,7 +124,7 @@ uint8_t* LF_Renderer::do_rendering(int& newPosX, int& newPosY)
 	set_rendering_params(localPosX, localPosY, output_width_each_dir, curPosX, curPosY); // CUDA 블록 사이즈 설정, 렌더링할 범위 설정 등
 
 	state_main_thread = MAIN_THREAD_WAIT;
-	getNeighborList(nbrPosition, curPosX, curPosY); // viewpoint의 이웃 8개를 리턴
+	predictFuturePosition(); // viewpoint의 이웃 8개를 리턴
 
 	while (!(getLFUID(curPosX, curPosY) == window->m_center->id && state_disk_read_thread >= DISK_READ_THREAD_CENTER_LFU_READ_COMPLETE)) {}
 	printf("[%d] (%d, %d)\n", getLFUID(curPosX, curPosY), curPosX, curPosY);
@@ -117,20 +137,20 @@ uint8_t* LF_Renderer::do_rendering(int& newPosX, int& newPosY)
 	mtx.unlock();
 	double caching_time = sw.Stop();
 	printf("caching time : %f\n", caching_time);
-	
+	printf("Reuse ratio : %d / %d = %f\n", hit_per_slice.first, hit_per_slice.second, (double)hit_per_slice.first / (double)hit_per_slice.second);
+	printf("Cached items : %d , FULL : %d\n", LRU->size(ODD), LRU->isFull(ODD));
 	cache_validity_check(curPosX, curPosY, slice_set, window, LRU);
 	sw.Start();
 	state_main_thread = MAIN_THREAD_RENDERING;
-	// interlace mode -> block shape : 2250*1280
 	
 	// output_width_each_dir --> 각 출력 이미지에서 가질 output width, set_rendering_range 함수를 호출해서 얻는다.
 	// printf("output width : %d = L%d + F%d + R%d + B%d\n", output_width, output_width_each_dir[3], output_width_each_dir[0], output_width_each_dir[1], output_width_each_dir[2]);
 	// launch rendering kernel
 	cudaError_t err;
-	synthesize << < blocksPerGrid_L, threadsPerBlock, 0, stream_main >> > (synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, 0, mode, 3, curPosX, curPosY, localPosX[3], localPosY[3], (int)config->LF_width, (int)config->LF_height, (int)config->LF_length, (int)config->slice_width);
-	synthesize << < blocksPerGrid_F, threadsPerBlock, 0, stream_main >> > (synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[3], mode, 0, curPosX, curPosY, localPosX[0], localPosY[0], (int)config->LF_width, (int)config->LF_height, (int)config->LF_length, (int)config->slice_width);
-	synthesize << < blocksPerGrid_R, threadsPerBlock, 0, stream_main >> > (synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[3] + output_width_each_dir[0], mode, 1, curPosX, curPosY, localPosX[1], localPosY[1], (int)config->LF_width, (int)config->LF_height, (int)config->LF_length, (int)config->slice_width);
-	synthesize << < blocksPerGrid_B, threadsPerBlock, 0, stream_main >> > (synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[3] + output_width_each_dir[0] + output_width_each_dir[1], mode, 2, curPosX, curPosY, localPosX[2], localPosY[2], (int)config->LF_width, (int)config->LF_height, (int)config->LF_length, (int)config->slice_width);
+	synthesize << < blocksPerGrid_L, threadsPerBlock, 0, stream_main >> > (synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, 0, mode, 3, curPosX, curPosY, localPosX[3], localPosY[3], (float)config->DPP, (int)config->LF_width, (int)config->LF_height, (int)config->LF_length, (int)config->slice_width);
+	synthesize << < blocksPerGrid_F, threadsPerBlock, 0, stream_main >> > (synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[3], mode, 0, curPosX, curPosY, localPosX[0], localPosY[0], (float)config->DPP, (int)config->LF_width, (int)config->LF_height, (int)config->LF_length, (int)config->slice_width);
+	synthesize << < blocksPerGrid_R, threadsPerBlock, 0, stream_main >> > (synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[3] + output_width_each_dir[0], mode, 1, curPosX, curPosY, localPosX[1], localPosY[1], (float)config->DPP,(int)config->LF_width, (int)config->LF_height, (int)config->LF_length, (int)config->slice_width);
+	synthesize << < blocksPerGrid_B, threadsPerBlock, 0, stream_main >> > (synthesized_view, LRU->d_devPtr_hashmap_odd, LRU->d_devPtr_hashmap_even, output_width_each_dir[3] + output_width_each_dir[0] + output_width_each_dir[1], mode, 2, curPosX, curPosY, localPosX[2], localPosY[2], (float)config->DPP, (int)config->LF_width, (int)config->LF_height, (int)config->LF_length, (int)config->slice_width);
 	err = cudaStreamSynchronize(stream_main);
 	assert(err == cudaSuccess);
 	state_main_thread = MAIN_THREAD_COMPLETE;
@@ -138,9 +158,16 @@ uint8_t* LF_Renderer::do_rendering(int& newPosX, int& newPosY)
 	double rendering_time = sw.Stop();
 	printf("rendering time : %f\n", rendering_time);
 	
-	FILE* fh2d = fopen(("./experiments/prefetching/npf_" + std::to_string(this->config->slice_width) + ".log").c_str(), "a");
-	if(curPosX !=201)
-		fprintf(fh2d, "%d,%d\t%f\t%f\t%d\t%d\n", curPosX, curPosY, caching_time, rendering_time, hit_per_slice.first, hit_per_slice.second);
+#if PREFETCHING_MODE == 0
+	std::string log_path = "./experiments/prefetching/compare/ours_";
+#elif PREFETCHING_MODE == 1
+	std::string log_path = "./experiments/prefetching/compare/dr_";
+#else 
+	std::string log_path = "./experiments/prefetching/compare/none_";
+#endif
+	
+	FILE* fh2d = fopen((log_path + std::to_string(this->config->slice_width) + ".log").c_str(), "a");
+	fprintf(fh2d, "%d,%d\t%f\t%f\t%d\t%d\n", curPosX, curPosY, caching_time, rendering_time, hit_per_slice.first, hit_per_slice.second);
 	fclose(fh2d);
 
 	return synthesized_view;
@@ -185,7 +212,7 @@ void LF_Renderer::set_rendering_params(int* localPosX, int* localPosY, int* outp
 	for (int i = 0; i < 4; i++) {
 		float theta_L = rad2deg(atan2f((-1.0f * LFU_WIDTH / 2 - localPosX[i]), (LFU_WIDTH / 2 - localPosY[i])));
 		float theta_R = rad2deg(atan2f((1.0f * LFU_WIDTH / 2 - localPosX[i]), (LFU_WIDTH / 2 - localPosY[i])));
-		output_width[i] = (int)((theta_R - theta_L) / 0.04f);
+		output_width[i] = (int)((theta_R - theta_L) / this->config->DPP);
 	}
 
 	blocksPerGrid_F.x = (int)ceil((float)output_width[0] / (float)threadsPerBlock.x);
@@ -198,25 +225,59 @@ void LF_Renderer::set_rendering_params(int* localPosX, int* localPosY, int* outp
 	blocksPerGrid_L.y = (int)ceil((float)(config->LF_height / 2) / (float)threadsPerBlock.y); // set a shape of the threads-per-block
 }
 
-void LF_Renderer::getNeighborList(std::vector<std::pair<int, int>>& nbrPosition, const int& curPosX, const int& curPosY)
+void LF_Renderer::predictFuturePosition()
 {
-	nbrPosition[0] = (std::make_pair(curPosX, curPosY - 1));
-	nbrPosition[1] = (std::make_pair(curPosX + 1, curPosY - 1));
-	nbrPosition[2] = (std::make_pair(curPosX + 1, curPosY));
-	nbrPosition[3] = (std::make_pair(curPosX + 1, curPosY + 1));
-	nbrPosition[4] = (std::make_pair(curPosX, curPosY + 1));
-	nbrPosition[5] = (std::make_pair(curPosX - 1, curPosY + 1));
-	nbrPosition[6] = (std::make_pair(curPosX - 1, curPosY));
-	nbrPosition[7] = (std::make_pair(curPosX - 1, curPosY - 1));
+#ifndef DEAD_RECKONING
+	/*
+	candidates_of_future_position[0] = (std::make_pair(this->curPosX, this->curPosY - this->stride));
+	candidates_of_future_position[1] = (std::make_pair(this->curPosX + this->stride, this->curPosY - this->stride));
+	candidates_of_future_position[2] = (std::make_pair(this->curPosX + this->stride, this->curPosY));
+	candidates_of_future_position[3] = (std::make_pair(this->curPosX + this->stride, this->curPosY + this->stride));
+	candidates_of_future_position[4] = (std::make_pair(this->curPosX, this->curPosY + this->stride));
+	candidates_of_future_position[5] = (std::make_pair(this->curPosX - this->stride, this->curPosY + this->stride));
+	candidates_of_future_position[6] = (std::make_pair(this->curPosX - this->stride, this->curPosY));
+	candidates_of_future_position[7] = (std::make_pair(this->curPosX - this->stride, this->curPosY - this->stride));
+	*/
+
+	int vcX = curPosX - prevPosX;
+	int vcY = curPosY - prevPosY;
+	int vpX = prevPosX - prevprevPosX;
+	int vpY = prevPosY - prevprevPosY;
+	int vppX = prevprevPosX - prevprevprevPosX;
+	int vppY = prevprevPosY - prevprevprevPosY;
+
+	double cap = (double)this->LRU->size(ODD) / (double)this->LRU->get_slice_cache_capacity();
+	candidates_of_future_position[0] = (std::make_pair(this->curPosX + vcX, this->curPosY + vcY));
+	candidates_of_future_position[1] = candidates_of_future_position[0];
+	candidates_of_future_position[2] = (std::make_pair(this->curPosX + vpX, this->curPosY + vpY));
+	candidates_of_future_position[3] = (std::make_pair(this->curPosX + vppX, this->curPosY + vppY));
+	candidates_of_future_position[4] = candidates_of_future_position[0];
+	candidates_of_future_position[5] = candidates_of_future_position[0];
+	candidates_of_future_position[6] = candidates_of_future_position[2];
+	candidates_of_future_position[7] = candidates_of_future_position[3];
+	
+#else
+	do_dead_reckoning(this->candidates_of_future_position, this->prevprevPosX, this->prevprevPosY, this->prevPosX, this->prevPosY, this->curPosX, this->curPosY, 120.0, 8);
+	// for (int i = 0; i < candidates_of_future_position.size(); i++)
+	// 	printf("\tafter %d frame : (%d, %d)\n", i + 1, candidates_of_future_position.at(i).first, candidates_of_future_position.at(i).second);
+#endif
 }
 
 void LF_Renderer::loop_nbrs_h2d(LRU_Cache& LRU, const LFU_Window& window, SliceSet slice_set[][100], std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, const MAIN_THREAD_STATE& state_main_thread, std::mutex& mtx)
 {
+#if PREFETCHING_MODE == 0
 	while (state_main_thread != MAIN_THREAD_TERMINATED) {
 		mtx.lock();
 		cache_slice_in_background(LRU, window, slice_set, nbrPosition, stream_h2d, state_main_thread);
 		mtx.unlock();
 	}
+#elif PREFETCHING_MODE == 1
+	while (state_main_thread != MAIN_THREAD_TERMINATED) {
+		mtx.lock();
+		cache_dead_reckoning_in_background(LRU, window, slice_set, nbrPosition, stream_h2d, state_main_thread);
+		mtx.unlock();
+	}
+#endif
 }
 
 void LF_Renderer::loop_read_disk(LFU_Window& window, const int& curPosX, const int& curPosY, const int& light_field_size, const MAIN_THREAD_STATE& state_main_thread)
@@ -235,7 +296,7 @@ std::pair<int, int> LF_Renderer::cache_slice(LRU_Cache& LRU, const LFU_Window& w
 
 	int hit_count = 0;
 	int slice_count = 0;
-
+	
 	for (SliceSet::iterator it = slice_set[localPosX][localPosY].begin(); it != slice_set[localPosX][localPosY].end(); it++)
 	{
 		for (int slice_num = it->range_begin; slice_num <= it->range_end; slice_num++)
@@ -286,13 +347,14 @@ std::pair<int, int> LF_Renderer::cache_slice(LRU_Cache& LRU, const LFU_Window& w
 
 int LF_Renderer::cache_slice_in_background(LRU_Cache& LRU, const LFU_Window& window, SliceSet slice_set[][100], std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, const MAIN_THREAD_STATE& thread_state_main)
 {
+#if 1
 	int i = 0;
 	int s = 0;
 
 	while (1)
 	{
 		while (1) {
-			for (int p = 0; p < 8; p++) {
+			for (int p = 0; p < 4; p++) {
 				if (thread_state_main == MAIN_THREAD_H2D) {
 					state_h2d_thread = H2D_THREAD_INTERRUPTED;
 					return -1;
@@ -333,6 +395,41 @@ int LF_Renderer::cache_slice_in_background(LRU_Cache& LRU, const LFU_Window& win
 		s++;
 		if (s > slice_set[nbrPosition.back().first % 100][nbrPosition.back().second % 100].back().range_end) return 0;
 	}
+#else
+	for (int i = 0; i < nbrPosition.size(); i++)
+	{
+		int posX = nbrPosition.at(i).first;
+		int posY = nbrPosition.at(i).second;
+
+		for (SliceSet::iterator it = slice_set[posX % 100][posY % 100].begin(); it != slice_set[posX % 100][posY % 100].end(); it++)
+		{
+			if (thread_state_main == MAIN_THREAD_H2D) {
+				state_h2d_thread = H2D_THREAD_INTERRUPTED;
+				return -1;
+			} // interrupted
+
+			for (int slice_num = it->range_begin; slice_num <= it->range_end; slice_num++)
+			{
+				SliceID id;
+				id.lf_number = window.m_center->LF[it->direction]->LF_number;
+				id.image_number = it->image_num;
+				id.slice_number = slice_num;
+
+				size_t slice_location = find_slice_from_LF(id.image_number, id.slice_number);
+
+				if (window.pinned_memory_status == PINNED_LFU_ODD_AVAILABLE) {
+					LRU.put(id, window.m_pinnedLFU[ODD][it->direction] + slice_location, stream_h2d, ODD);
+				}
+				if (window.pinned_memory_status == PINNED_LFU_EVEN_AVAILABLE) {
+					LRU.put(id, window.m_pinnedLFU[ODD][it->direction] + slice_location, stream_h2d, ODD);
+					LRU.put(id, window.m_pinnedLFU[EVEN][it->direction] + slice_location, stream_h2d, EVEN);
+				}
+			}
+		}
+	}
+
+	return 0;
+#endif
 }
 
 size_t LF_Renderer::find_slice_from_LF(const int& img, const int& slice)
@@ -352,8 +449,10 @@ __device__ int dev_query_hashmap(int lf, int img, int slice, int width, int leng
 	return lf * (width / slice_width) * length + img * (width / slice_width) + slice;
 }
 
-__global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** d_hashmap_even, int offset, int mode, int direction, int posX, int posY, int localPosX, int localPosY, int width, int height, int legnth, int slice_width, float fov, float times)
+__global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t** d_hashmap_even, int offset, int mode, int direction, int posX, int posY, int localPosX, int localPosY, float dpp, int width, int height, int legnth, int slice_width, float fov, float times)
 {
+	int ow = (int)(360.0f / dpp);
+
 	int tw = blockIdx.x * blockDim.x + threadIdx.x; // blockIdx.x = (int)[0, (out_w - 1)]
 	int th = blockIdx.y * blockDim.y + threadIdx.y; // threadIdx = (int)[0, (g_height - 1)]
 
@@ -368,11 +467,11 @@ __global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t**
 		theta_R = 90.0f;
 	}
 
-	int output_width = (int)((theta_R - theta_L) / 0.04f);
+	int output_width = (int)((theta_R - theta_L) / dpp);
 
 	if (tw < output_width && th < (height >> 1)) // Thread index must not exceed output resolution
 	{
-		float theta_P = theta_L + (0.04f * (float)tw);
+		float theta_P = theta_L + (dpp * (float)tw);
 
 		float b = sqrt(2.0f) * LFUW;
 		float xP = (float)(Y - localPosY) * tanf(dev_deg2rad(theta_P)) + localPosX;
@@ -419,41 +518,41 @@ __global__ void synthesize(uint8_t* outImage, uint8_t** d_hashmap_odd, uint8_t**
 		uint8_t oddpel_ch0 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 2]; // Random access to pixel column
 		uint8_t oddpel_ch1 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 1]; // Random access to pixel column
 		uint8_t oddpel_ch2 = d_hashmap_odd[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 0]; // Random access to pixel column
-		outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 0] = oddpel_ch0; // b 
-		outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 1] = oddpel_ch1; // g 
-		outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 2] = oddpel_ch2; // r 
+		outImage[((2 * th) * (ow * 3) + offset * 3) + tw * 3 + 0] = oddpel_ch0; // b 
+		outImage[((2 * th) * (ow * 3) + offset * 3) + tw * 3 + 1] = oddpel_ch1; // g 
+		outImage[((2 * th) * (ow * 3) + offset * 3) + tw * 3 + 2] = oddpel_ch2; // r 
 
 		if (mode == 1) {
 			uint8_t evenpel_ch0 = d_hashmap_even[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 2]; // Random access to pixel column
 			uint8_t evenpel_ch1 = d_hashmap_even[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 1]; // Random access to pixel column
 			uint8_t evenpel_ch2 = d_hashmap_even[slice][(pixel_col * (height >> 1)) * 3 + H_1 * 3 + 0]; // Random access to pixel column
 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 0] = evenpel_ch0; // b 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = evenpel_ch1; // g 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = evenpel_ch2; // r
+			outImage[((2 * th + 1) * (ow * 3) + offset * 3) + tw * 3 + 0] = evenpel_ch0; // b 
+			outImage[((2 * th + 1) * (ow * 3) + offset * 3) + tw * 3 + 1] = evenpel_ch1; // g 
+			outImage[((2 * th + 1) * (ow * 3) + offset * 3) + tw * 3 + 2] = evenpel_ch2; // r
 		}
 		else
 		{
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 0] = oddpel_ch0; // b 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = oddpel_ch1; // g 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = oddpel_ch2; // r 
+			outImage[((2 * th + 1) * (ow * 3) + offset * 3) + tw * 3 + 0] = oddpel_ch0; // b 
+			outImage[((2 * th + 1) * (ow * 3) + offset * 3) + tw * 3 + 1] = oddpel_ch1; // g 
+			outImage[((2 * th + 1) * (ow * 3) + offset * 3) + tw * 3 + 2] = oddpel_ch2; // r 
 		}
 #if 0
 		if (tw == 0) // for debug
 		{
-			outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 0] = 0; // b 
-			outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 1] = 0; // g 
-			outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 2] = 255; // r 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 0] = 0; // b 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = 0; // g 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 2] = 255; // r
+			outImage[((2 * th) * (ow * 3) + offset * 3) + tw * 3 + 0] = 0; // b 
+			outImage[((2 * th) * (ow * 3) + offset * 3) + tw * 3 + 1] = 0; // g 
+			outImage[((2 * th) * (ow * 3) + offset * 3) + tw * 3 + 2] = 255; // r 
+			outImage[((2 * th + 1) * (ow * 3) + offset * 3) + tw * 3 + 0] = 0; // b 
+			outImage[((2 * th + 1) * (ow * 3) + offset * 3) + tw * 3 + 1] = 0; // g 
+			outImage[((2 * th + 1) * (ow * 3) + offset * 3) + tw * 3 + 2] = 255; // r
 		}
 		if (tw == output_width - 1) // for debug
 		{
-			outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 0] = 255; // b 
-			outImage[((2 * th) * (9000 * 3) + offset * 3) + tw * 3 + 1] = 0; // g 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 0] = 255; // b 
-			outImage[((2 * th + 1) * (9000 * 3) + offset * 3) + tw * 3 + 1] = 0; // g 
+			outImage[((2 * th) * (ow * 3) + offset * 3) + tw * 3 + 0] = 255; // b 
+			outImage[((2 * th) * (ow * 3) + offset * 3) + tw * 3 + 1] = 0; // g 
+			outImage[((2 * th + 1) * (ow * 3) + offset * 3) + tw * 3 + 0] = 255; // b 
+			outImage[((2 * th + 1) * (ow * 3) + offset * 3) + tw * 3 + 1] = 0; // g 
 		}
 #endif
 	}
@@ -515,9 +614,84 @@ void LF_Renderer::generate_LFConfig(const std::string& path_LF, const std::strin
 				sw_upper_bound = sw_upper_bound < sw ? sw : sw_upper_bound;
 		}
 	}
-
 	size_t optiman_sw = std::min(neareast_mpr, sw_upper_bound);
-	// optiman_sw = 480; // 강제변환
 
 	this->config = new LF_Config(path_LF, path_pixelrange, iw, ih, lf_len, numLFs, optiman_sw, dpp);
+}
+
+std::pair<double, double> LF_Renderer::deadReckoning(std::pair<double, double> a_2, std::pair<double, double> a_1, std::pair<double, double> a0, double framerate, int f)
+{
+	double tf = (double)f / framerate;
+
+	std::pair<double, double> v0;
+	std::pair<double, double> v_1;
+	std::pair<double, double> c0;
+
+	v0 = std::make_pair(differentiation(a_1.first, a0.first, 1.0 / framerate), differentiation(a_1.second, a0.second, 1.0 / framerate));
+	v_1 = std::make_pair(differentiation(a_2.first, a_1.first, 1.0 / framerate), differentiation(a_2.second, a_1.second, 1.0 / framerate));
+	c0 = std::make_pair(differentiation(v_1.first, v0.first, tf), differentiation(v_1.second, v0.second, tf));
+
+	return std::make_pair(a0.first + v0.first * tf + 0.5 * c0.first * tf * tf, a0.second + v0.second * tf + 0.5 * c0.second * tf * tf);;
+}
+
+void LF_Renderer::do_dead_reckoning(std::vector<std::pair<int, int>>& candidates, double prevprevPosX, double prevprevPosY, double prevPosX, double prevPosY, double curPosX, double curPosY, double framerate, int prediction_range)
+{
+	std::pair<double, double> prevprevPos = std::make_pair(prevprevPosX, prevprevPosY);
+	std::pair<double, double> prevPos = std::make_pair(prevPosX, prevPosY);
+	std::pair<double, double> curPos = std::make_pair(curPosX, curPosY);
+
+	for (int i = 1; i <= prediction_range; i++)
+	{
+		std::pair<double, double> nextPos = deadReckoning(prevprevPos, prevPos, curPos, framerate, i);
+		nextPos.first = (double)clamp(nextPos.first, 1, ((int)curPosX / 100 + 1) * 100 - 1);
+		nextPos.second = (double)clamp(nextPos.second, 1, ((int)curPosY / 100 + 1) * 100 - 1);
+		candidates.at(i-1) = (std::make_pair((int)nextPos.first, (int)nextPos.second));
+	}
+}
+
+int LF_Renderer::cache_dead_reckoning_in_background(LRU_Cache& LRU, const LFU_Window& window, SliceSet slice_set[][100], std::vector<std::pair<int, int>>& nbrPosition, cudaStream_t stream_h2d, const MAIN_THREAD_STATE& thread_state_main)
+{
+	for (int i = 0; i < nbrPosition.size(); i++)
+	{
+		int posX = nbrPosition.at(i).first;
+		int posY = nbrPosition.at(i).second;
+
+		for (SliceSet::iterator it = slice_set[posX % 100][posY % 100].begin(); it != slice_set[posX % 100][posY % 100].end(); it++)
+		{
+			if (thread_state_main == MAIN_THREAD_H2D) {
+				state_h2d_thread = H2D_THREAD_INTERRUPTED;
+				return -1;
+			} // interrupted
+
+			for (int slice_num = it->range_begin; slice_num <= it->range_end; slice_num++)
+			{
+				SliceID id;
+				id.lf_number = window.m_center->LF[it->direction]->LF_number;
+				id.image_number = it->image_num;
+				id.slice_number = slice_num;
+
+				size_t slice_location = find_slice_from_LF(id.image_number, id.slice_number);
+
+				if (window.pinned_memory_status == PINNED_LFU_ODD_AVAILABLE) {
+					LRU.put(id, window.m_pinnedLFU[ODD][it->direction] + slice_location, stream_h2d, ODD);
+				}
+				if (window.pinned_memory_status == PINNED_LFU_EVEN_AVAILABLE) {
+					LRU.put(id, window.m_pinnedLFU[ODD][it->direction] + slice_location, stream_h2d, ODD);
+					LRU.put(id, window.m_pinnedLFU[EVEN][it->direction] + slice_location, stream_h2d, EVEN);
+				}
+			}
+		}
+	}
+
+	return 0;
+}
+
+void LF_Renderer::fill_cache()
+{
+	for (int i = 0; i < 100; i++) {
+		for (int j = 0; j < 100; j++) {
+			cache_slice(*LRU, *window, slice_set, i, j); 
+			if (LRU->isFull(ODD) == true) break;
+		}
+	}
 }
