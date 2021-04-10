@@ -4,7 +4,7 @@ This program was written in the MSVC v142 environment.
 
 Dependencies : CUDA 11.2, GLEW, freeglut
 
-
+-----
 
 **3DLFR_GPU**
 
