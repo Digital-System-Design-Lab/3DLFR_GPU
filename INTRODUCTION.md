@@ -10,11 +10,11 @@
 
   <img src="https://user-images.githubusercontent.com/74892010/114294526-4ff5f800-9ada-11eb-84ca-ad2695481633.png" alt="image" style="zoom: 67%;" />
 
-+ The square which is called `Light Field Unit(LFU)` is composed of four sides. Each side corresponds to the 2D plane that captures lights coming through. Synthesizing the view at the viewpoint inside the square is simplified to the process of selecting a light.
++ The square which is called ***Light Field Unit(LFU)*** is composed of four sides. Each side corresponds to the 2D plane that captures lights coming through. Synthesizing the view at the viewpoint inside the square is simplified to the process of selecting a light.
 
   ![image](https://user-images.githubusercontent.com/74892010/114294540-6603b880-9ada-11eb-91c4-50c0e2365d4b.png)
 
-+ Square-shaped `LFU` can be applied to any places you want to capture. No limit to expansion!
++ Square-shaped ***LFU*** can be applied to any places you want to capture. No limit to expansion!
 
 # System Summary
 
