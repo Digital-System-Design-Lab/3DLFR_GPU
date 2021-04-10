@@ -4,15 +4,15 @@
 
 + We acquire rays of 3-dimensional spaces by capturing dense 360-degree images. A GoPro fusion camera and a camera dolly from Edelkrone move and capture the light along the white path as shown below.
 
-<img src="https://user-images.githubusercontent.com/74892010/114294519-3a80ce00-9ada-11eb-903a-6efb98ad6fa6.png" alt="image" style="zoom: 67%;" />
+  <img src="https://user-images.githubusercontent.com/74892010/114294519-3a80ce00-9ada-11eb-903a-6efb98ad6fa6.png" alt="image" style="zoom: 67%;" />
 
 + We captures all the light which come through the 2D plane. To construct the “virtual view” at the arbitrary viewpoint, the lights required at the viewpoint are chosen and combined. 
 
-![image](https://user-images.githubusercontent.com/74892010/114294526-4ff5f800-9ada-11eb-84ca-ad2695481633.png)
+  <img src="https://user-images.githubusercontent.com/74892010/114294526-4ff5f800-9ada-11eb-84ca-ad2695481633.png" alt="image" style="zoom: 67%;" />
 
 + The square which is called `Light Field Unit(LFU)` is composed of four sides. Each side corresponds to the 2D plane that captures lights coming through. Synthesizing the view at the viewpoint inside the square is simplified to the process of selecting a light.
 
-![image](https://user-images.githubusercontent.com/74892010/114294540-6603b880-9ada-11eb-91c4-50c0e2365d4b.png)
+  ![image](https://user-images.githubusercontent.com/74892010/114294540-6603b880-9ada-11eb-91c4-50c0e2365d4b.png)
 
 + Square-shaped `LFU` can be applied to any places you want to capture. No limit to expansion!
 
@@ -44,7 +44,7 @@
 
   Each slice has a unique ID. Host memory has LF data, a list of recently used slices, and a hashmap to manage IDs and memory addresses of slices.  ***H<sub>hashmap</sub>*** contains the address of the host memory where slices are stored, whereas ***H-D<sub>hashmap</sub>*** contains the address of the device memory where slices transferred from the host memory. Device memory is allocated for **D<sub>slice</sub>**, ***D<sub>hashmap</sub>***, and ***D<sub>output</sub>***. Slices transferred from host memory are stored in ***D<sub>slice</sub>***. When the GPU kernel for view synthesis is running, it can quickly access the slices in ***D<sub>slice</sub>*** by looking up the address of the ***D<sub>hashmap</sub>***. The synthesized view is saved in ***D<sub>output</sub>***. In Fig. 4, when a pixel column belonging to slice ID=23 is needed at the current viewpoint, the processing steps are shown from (1) to (5). First, the ***H<sub>hashmap</sub>*** is searched for ID=23. If the address value is NULL, this slice is not in the slice list and must be added. After writing the host memory address of slice ID=23 in the ***H<sub>hashmap</sub>*** (1), it is appended to the slice list (2). Then, the slice is transferred to ***D<sub>slice</sub>*** of device memory (3), and the address of ***D<sub>slice</sub>*** is written to ***H-D<sub>hashmap</sub>*** (4).  The same process is repeated for all slices required at the current viewpoint. Finally, the two hashmaps are synchronized by copying the ***H-D<sub>hashmap</sub>*** to the ***D<sub>hashmap</sub>*** (5). Since the GPU kernel cannot know the address of the device memory where the data transmitted from the host, the process of (5) is necessary. 
 
-  <img src="https://user-images.githubusercontent.com/74892010/114294575-a19e8280-9ada-11eb-97d5-5f86097deea8.png" alt="image" style="zoom: 50%;" />
+  <img src="https://user-images.githubusercontent.com/74892010/114294575-a19e8280-9ada-11eb-97d5-5f86097deea8.png" alt="image" style="zoom: 33%;" />
 
 - ## Hierarchical Structure between Storage and Host Memory
 
@@ -64,4 +64,4 @@
 
   - The flow chart shows the progressive LF update using the interlaced LF format. When the current LFU in the center is changed by the viewpoint movement, the LFU window slides to determine what data needs to be read from the storage(1).This includes even (or odd) fields that can make views of the current LFU complete and odd (or even) fields for new neighboring LFUs. While GPU rendering is being performed, even fields of the current LFU are read first. (2) to quickly change the rendered view from the current viewpoint to high quality. If the LF data of the full view for the current LFU is not yet prepared, the half resolution view from the odd fields is synthesized. At the same time, even fields are read continuously (3). When the reading of the even fields for the current LFU is finished, the full resolution view is now synthesized and the odd field of the neighboring LFU is read in the background. (4). 
   
-  <img src="https://user-images.githubusercontent.com/74892010/114294631-e88c7800-9ada-11eb-99a5-e49dc45e58a9.png" alt="image" style="zoom:50%;" />
+    <img src="https://user-images.githubusercontent.com/74892010/114294631-e88c7800-9ada-11eb-99a5-e49dc45e58a9.png" alt="image" style="zoom: 33%;" />
