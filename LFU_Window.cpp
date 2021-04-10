@@ -1,10 +1,10 @@
 #include "LFU_Window.h"
 
-LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_field_size, const std::string& dir, bool use_window)
+LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_field_size, const std::string& dir, DISK_READ_THREAD_STATE* disk_read_thread_state, bool use_window)
 {
+	curLFUID = getLFUID(posX, posY);
+	this->state_disk_read_thread = disk_read_thread_state;
 	this->LF_prefix = dir;
-
-	int LFUID = getLFUID(posX, posY);
 	
 	printf("Allocating pinned memory");
 	for (int i = 0; i < 2; i++) {
@@ -57,12 +57,12 @@ LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_fie
 	printf(".");
 
 	int LF_num_each_dir[4];
-	find_LF_number_BMW(LF_num_each_dir[0], LF_num_each_dir[1], LF_num_each_dir[2], LF_num_each_dir[3], LFUID);
+	find_LF_number_BMW(LF_num_each_dir[0], LF_num_each_dir[1], LF_num_each_dir[2], LF_num_each_dir[3], curLFUID);
 
 	for (int dir = 0; dir < 4; dir++) {
-		m_LFU[8].id = LFUID;
+		m_LFU[8].id = curLFUID;
 		if (m_LFU[8].LF[dir]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED) {
-			read_uint8(m_LFU[8].LF[dir]->odd_field, BMW_LF[LFUID][dir], ODD);
+			read_uint8(m_LFU[8].LF[dir]->odd_field, BMW_LF[curLFUID][dir], ODD, posX, posY);
 			m_LFU[8].LF[dir]->LF_number = LF_num_each_dir[dir];
 			m_LFU[8].LF[dir]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
 		}
@@ -72,7 +72,7 @@ LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_fie
 	printf("Reading Even Field LFs");
 	for (int dir = 0; dir < 4; dir++) {
 		memcpy(m_pinnedLFU[ODD][dir], m_center->LF[dir]->odd_field, light_field_size);
-		read_uint8(m_center->LF[dir]->even_field, BMW_LF[m_center->id][dir], EVEN);
+		read_uint8(m_center->LF[dir]->even_field, BMW_LF[m_center->id][dir], EVEN, posX, posY);
 		m_center->LF[dir]->progress = LF_READ_PROGRESS_EVEN_FIELD_PREPARED;
 		printf(".");
 	}
@@ -81,21 +81,22 @@ LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_fie
 	printf("Complete\n");
 }
 
-LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_field_size, const std::string& dir)
+LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_field_size, const std::string& dir, DISK_READ_THREAD_STATE* disk_read_thread_state)
 {
+	curLFUID = getLFUID(posX, posY);
+	this->state_disk_read_thread = disk_read_thread_state;
 	this->LF_prefix = dir;
 
-	int LFUID = getLFUID(posX, posY);
 	int LFUIDs[9];
-	LFUIDs[N] = LFUID + 1;
-	LFUIDs[NE] = LFUID + 56 + 1;
-	LFUIDs[E] = LFUID + 56;
-	LFUIDs[SE] = LFUID + 56 - 1;
-	LFUIDs[S] = LFUID - 1;
-	LFUIDs[SW] = LFUID - 56 - 1;
-	LFUIDs[W] = LFUID - 56;
-	LFUIDs[NW] = LFUID - 56 + 1;
-	LFUIDs[8] = LFUID;
+	LFUIDs[N] = curLFUID + 1;
+	LFUIDs[NE] = curLFUID + 56 + 1;
+	LFUIDs[E] = curLFUID + 56;
+	LFUIDs[SE] = curLFUID + 56 - 1;
+	LFUIDs[S] = curLFUID - 1;
+	LFUIDs[SW] = curLFUID - 56 - 1;
+	LFUIDs[W] = curLFUID - 56;
+	LFUIDs[NW] = curLFUID - 56 + 1;
+	LFUIDs[8] = curLFUID;
 	construct_window(light_field_size);
 
 	printf("Reading Odd Field LFs");
@@ -109,7 +110,7 @@ LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_fie
 		for (int dir = 0; dir < 4; dir++) {
 			m_LFU[i].id = LFUIDs[i];
 			if (m_LFU[i].LF[dir]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED) {
-				read_uint8(m_LFU[i].LF[dir]->odd_field, BMW_LF[LFUIDs[i]][dir], ODD);
+				read_uint8(m_LFU[i].LF[dir]->odd_field, BMW_LF[LFUIDs[i]][dir], ODD, posX, posY);
 				m_LFU[i].LF[dir]->LF_number = LF_num_each_dir[dir];
 				m_LFU[i].LF[dir]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
 			}
@@ -120,7 +121,7 @@ LFU_Window::LFU_Window(const int& posX, const int& posY, const size_t& light_fie
 	printf("Reading Even Field LFs");
 	for (int dir = 0; dir < 4; dir++) {
 		memcpy(m_pinnedLFU[ODD][dir], m_center->LF[dir]->odd_field, light_field_size);
-		read_uint8(m_center->LF[dir]->even_field, BMW_LF[m_center->id][dir], EVEN);
+		read_uint8(m_center->LF[dir]->even_field, BMW_LF[m_center->id][dir], EVEN, posX, posY);
 		m_center->LF[dir]->progress = LF_READ_PROGRESS_EVEN_FIELD_PREPARED;
 		printf(".");
 	}
@@ -192,8 +193,8 @@ void LFU_Window::construct_window(const size_t& light_field_size)
 
 	m_LFU[1].LF[FRONT] = &m_row[2];
 	m_LFU[1].LF[RIGHT] = &m_col[9];
-	m_LFU[1].LF[BACK] = &m_row[6];
-	m_LFU[1].LF[LEFT] = &m_col[5];
+	m_LFU[1].LF[BACK] = &m_row[5];
+	m_LFU[1].LF[LEFT] = &m_col[6];
 
 	m_LFU[2].LF[FRONT] = &m_row[5];
 	m_LFU[2].LF[RIGHT] = &m_col[10];
@@ -236,448 +237,406 @@ void LFU_Window::construct_window(const size_t& light_field_size)
 	m_LFU[8].LF[LEFT]->even_field = m_pinnedLFU[EVEN][LEFT];
 }
 
-int LFU_Window::update_window(const int& prevPosX, const int& prevPosY, const int& curPosX, const int& curPosY, const size_t& light_field_size, const MAIN_THREAD_STATE& main_thread_state)
+int LFU_Window::update_window(const int& curPosX, const int& curPosY, const size_t& light_field_size, const MAIN_THREAD_STATE& main_thread_state)
 {
-	int prevLFUID = getLFUID(prevPosX, prevPosY);
-	int curLFUID = getLFUID(curPosX, curPosY);
+	curLFUID = getLFUID(curPosX, curPosY);
 
-	switch (curLFUID - prevLFUID) {
-	case 57: {
-		printf("[LFU_Window] Window Sliding - Upper Right\n");
-	}break;
-	case 55: {
-		printf("[LFU_Window] Window Sliding - Lower Right\n");
-	}break;
-	case -57: {
-		printf("[LFU_Window] Window Sliding - Lower Left\n");
-	}break;
-	case -55: {
-		printf("[LFU_Window] Window Sliding - Upper Left\n");
-	}break;
+	if (curLFUID != this->m_center->id || *state_disk_read_thread != DISK_READ_THREAD_NEIGHBOR_LFU_READ_COMPLETE) {
+		switch (curLFUID - this->m_center->id) {
+		case 57: {
+			printf("[LFU_Window] Window Sliding - Upper Right\n");
+		}break;
+		case 55: {
+			printf("[LFU_Window] Window Sliding - Lower Right\n");
+		}break;
+		case -57: {
+			printf("[LFU_Window] Window Sliding - Lower Left\n");
+		}break;
+		case -55: {
+			printf("[LFU_Window] Window Sliding - Upper Left\n");
+		}break;
 
-	case 56: {
-		// LF[RIGHT] - nbr[NE], nbr[E], nbr[SE] should be replaced
-		printf("[LFU_Window] Window Sliding - Right\n");
-		pinned_memory_status = PINNED_LFU_NOT_AVAILABLE;
-		LFU* prevCenter = m_center;
+		case 56: {
+			printf("[LFU_Window] Window Sliding - Right\n");
+			*state_disk_read_thread = DISK_READ_THREAD_CENTER_LFU_READING;
+			pinned_memory_status = PINNED_LFU_NOT_AVAILABLE;
+			LFU* prevCenter = m_center;
 
-		m_center->nbr[NW]->LF[RIGHT] = m_center->nbr[NW]->LF[LEFT]; // 버려질 LF[LEFT]를 LF[RIGHT]에 저장하고
-		m_center->nbr[W]->LF[RIGHT] = m_center->nbr[W]->LF[LEFT];
-		m_center->nbr[SW]->LF[RIGHT] = m_center->nbr[SW]->LF[LEFT];
-		m_center->nbr[NW]->LF[RIGHT]->progress = LF_READ_PROGRESS_NOT_PREPARED; // LF[RIGHT]가 덮어씌워질 수 있게 FLAG 마킹
-		m_center->nbr[W]->LF[RIGHT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[SW]->LF[RIGHT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[NW]->LF[FRONT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[W]->LF[FRONT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[SW]->LF[FRONT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[SW]->LF[BACK]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		
-		m_center->nbr[NW]->LF[LEFT] = m_center->nbr[NE]->LF[RIGHT]; // LF[LEFT] 주소값 업데이트
-		m_center->nbr[W]->LF[LEFT] = m_center->nbr[E]->LF[RIGHT];
-		m_center->nbr[SW]->LF[LEFT] = m_center->nbr[SE]->LF[RIGHT];
+			for (int i = 0; i < 4; i++) {
+				m_center->nbr[NW]->LF[i]->progress = LF_READ_PROGRESS_NOT_PREPARED;
+				m_center->nbr[W]->LF[i]->progress = LF_READ_PROGRESS_NOT_PREPARED;
+				m_center->nbr[SW]->LF[i]->progress = LF_READ_PROGRESS_NOT_PREPARED;
+			}
 
-		m_center->nbr[E]->nbr[N] = m_center->nbr[NE];
-		m_center->nbr[E]->nbr[NE] = m_center->nbr[NW];
-		m_center->nbr[E]->nbr[E] = m_center->nbr[W];
-		m_center->nbr[E]->nbr[SE] = m_center->nbr[SW];
-		m_center->nbr[E]->nbr[S] = m_center->nbr[SE];
-		m_center->nbr[E]->nbr[SW] = m_center->nbr[S];
-		m_center->nbr[E]->nbr[W] = m_center;
-		m_center->nbr[E]->nbr[NW] = m_center->nbr[N];
-		m_center = m_center->nbr[E];
+			m_center->nbr[E]->nbr[N] = m_center->nbr[NE];
+			m_center->nbr[E]->nbr[NE] = m_center->nbr[NW];
+			m_center->nbr[E]->nbr[E] = m_center->nbr[W];
+			m_center->nbr[E]->nbr[SE] = m_center->nbr[SW];
+			m_center->nbr[E]->nbr[S] = m_center->nbr[SE];
+			m_center->nbr[E]->nbr[SW] = m_center->nbr[S];
+			m_center->nbr[E]->nbr[W] = m_center;
+			m_center->nbr[E]->nbr[NW] = m_center->nbr[N];
+			m_center = m_center->nbr[E];
 
-		// prev center's pinned even memory address goes to null while new center gets it
-		uint8_t* even_fields[4];
-		for (int dir = 0; dir < 4; dir++) {
-			even_fields[dir] = prevCenter->LF[dir]->even_field;
-			prevCenter->LF[dir]->even_field = nullptr;
-		}
-		for (int dir = 0; dir < 4; dir++) {
-			m_center->LF[dir]->even_field = even_fields[dir];
-			if (m_center->LF[dir]->progress == LF_READ_PROGRESS_EVEN_FIELD_PREPARED)
-				m_center->LF[dir]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-		}
+			m_center->nbr[NE]->LF[LEFT] = m_center->nbr[N]->LF[RIGHT]; // LF 재사용
+			m_center->nbr[E]->LF[LEFT] = m_center->LF[RIGHT];
+			m_center->nbr[SE]->LF[LEFT] = m_center->nbr[S]->LF[RIGHT];
 
-		m_center->nbr[NE]->id = m_center->nbr[N]->id + 56; // id 업데이트
-		m_center->nbr[E]->id = m_center->id + 56;
-		m_center->nbr[SE]->id  = m_center->nbr[S]->id + 56;
+			m_center->nbr[NE]->id = m_center->nbr[N]->id + 56; // id 업데이트
+			m_center->nbr[E]->id = m_center->id + 56;
+			m_center->nbr[SE]->id = m_center->nbr[S]->id + 56;
 
-		int f, r, b, l;
-		find_LF_number_BMW(f, r, b, l, m_center->nbr[NE]->id); // LF number 업데이트
-		m_center->nbr[NE]->LF[FRONT]->LF_number = f;
-		m_center->nbr[NE]->LF[RIGHT]->LF_number = r;
-		m_center->nbr[NE]->LF[BACK]->LF_number = b;
-		m_center->nbr[NE]->LF[LEFT]->LF_number = l;
+			int f, r, b, l;
+			find_LF_number_BMW(f, r, b, l, m_center->nbr[NE]->id); // LF number 업데이트
+			m_center->nbr[NE]->LF[FRONT]->LF_number = f;
+			m_center->nbr[NE]->LF[RIGHT]->LF_number = r;
+			m_center->nbr[NE]->LF[BACK]->LF_number = b;
+			m_center->nbr[NE]->LF[LEFT]->LF_number = l;
 
-		find_LF_number_BMW(f, r, b, l, m_center->nbr[E]->id);
-		m_center->nbr[E]->LF[FRONT]->LF_number = f;
-		m_center->nbr[E]->LF[RIGHT]->LF_number = r;
-		m_center->nbr[E]->LF[BACK]->LF_number = b;
-		m_center->nbr[E]->LF[LEFT]->LF_number = l;
+			find_LF_number_BMW(f, r, b, l, m_center->nbr[E]->id);
+			m_center->nbr[E]->LF[FRONT]->LF_number = f;
+			m_center->nbr[E]->LF[RIGHT]->LF_number = r;
+			m_center->nbr[E]->LF[BACK]->LF_number = b;
+			m_center->nbr[E]->LF[LEFT]->LF_number = l;
 
-		find_LF_number_BMW(f, r, b, l, m_center->nbr[SE]->id);
-		m_center->nbr[SE]->LF[FRONT]->LF_number = f;
-		m_center->nbr[SE]->LF[RIGHT]->LF_number = r;
-		m_center->nbr[SE]->LF[BACK]->LF_number = b;
-		m_center->nbr[SE]->LF[LEFT]->LF_number = l;
+			find_LF_number_BMW(f, r, b, l, m_center->nbr[SE]->id);
+			m_center->nbr[SE]->LF[FRONT]->LF_number = f;
+			m_center->nbr[SE]->LF[RIGHT]->LF_number = r;
+			m_center->nbr[SE]->LF[BACK]->LF_number = b;
+			m_center->nbr[SE]->LF[LEFT]->LF_number = l;
 
-	} break;
-	case -56: {
-		// LF[LEFT] - nbr[NW], nbr[W], nbr[SW] should be replaced
-		printf("[LFU_Window] Window Sliding - Left\n");
-		pinned_memory_status = PINNED_LFU_NOT_AVAILABLE;
-		LFU* prevCenter = m_center;
+			// prev center's pinned even memory address goes to null while new center gets it
+			uint8_t* even_fields[4];
+			for (int dir = 0; dir < 4; dir++) {
+				even_fields[dir] = prevCenter->LF[dir]->even_field;
+				prevCenter->LF[dir]->even_field = nullptr;
+			}
+			for (int dir = 0; dir < 4; dir++) {
+				m_center->LF[dir]->even_field = even_fields[dir];
+				if (m_center->LF[dir]->progress == LF_READ_PROGRESS_EVEN_FIELD_PREPARED)
+					m_center->LF[dir]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+			}
+		} break;
+		case -56: {
+			// LF[LEFT] - nbr[NW], nbr[W], nbr[SW] should be replaced
+			printf("[LFU_Window] Window Sliding - Left\n");
+			*state_disk_read_thread = DISK_READ_THREAD_CENTER_LFU_READING;
+			pinned_memory_status = PINNED_LFU_NOT_AVAILABLE;
+			LFU* prevCenter = m_center;
 
-		m_center->nbr[NE]->LF[LEFT] = m_center->nbr[NE]->LF[RIGHT]; // 버려질 LF[RIGHT]를 LF[LEFT]에 저장하고
-		m_center->nbr[E]->LF[LEFT] = m_center->nbr[E]->LF[RIGHT];
-		m_center->nbr[SE]->LF[LEFT] = m_center->nbr[SE]->LF[RIGHT];
-		m_center->nbr[NE]->LF[LEFT]->progress = LF_READ_PROGRESS_NOT_PREPARED; // LF[LEFT]가 덮어씌워질 수 있게 FLAG 마킹
-		m_center->nbr[E]->LF[LEFT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[SE]->LF[LEFT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[NE]->LF[FRONT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[E]->LF[FRONT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[SE]->LF[FRONT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[SE]->LF[BACK]->progress = LF_READ_PROGRESS_NOT_PREPARED;
+			for (int i = 0; i < 4; i++) {
+				m_center->nbr[NE]->LF[i]->progress = LF_READ_PROGRESS_NOT_PREPARED;
+				m_center->nbr[E]->LF[i]->progress = LF_READ_PROGRESS_NOT_PREPARED;
+				m_center->nbr[SE]->LF[i]->progress = LF_READ_PROGRESS_NOT_PREPARED;
+			}
 
-		m_center->nbr[NE]->LF[RIGHT] = m_center->nbr[NW]->LF[LEFT]; // LF[RIGHT] 주소값 업데이트
-		m_center->nbr[E]->LF[RIGHT] = m_center->nbr[W]->LF[LEFT];
-		m_center->nbr[SE]->LF[RIGHT] = m_center->nbr[SW]->LF[LEFT];
+			m_center->nbr[W]->nbr[N] = m_center->nbr[NW]; // 새로운 LFU 관계 정의 (LFU Window Sliding)
+			m_center->nbr[W]->nbr[NE] = m_center->nbr[N];
+			m_center->nbr[W]->nbr[E] = m_center;
+			m_center->nbr[W]->nbr[SE] = m_center->nbr[S];
+			m_center->nbr[W]->nbr[S] = m_center->nbr[SW];
+			m_center->nbr[W]->nbr[SW] = m_center->nbr[SE];
+			m_center->nbr[W]->nbr[W] = m_center->nbr[E];
+			m_center->nbr[W]->nbr[NW] = m_center->nbr[NE];
+			m_center = m_center->nbr[W];
 
-		m_center->nbr[W]->nbr[N] = m_center->nbr[NW]; // 새로운 LFU 관계 정의 (LFU Window Sliding)
-		m_center->nbr[W]->nbr[NE] = m_center->nbr[N];
-		m_center->nbr[W]->nbr[E] = m_center;
-		m_center->nbr[W]->nbr[SE] = m_center->nbr[S];
-		m_center->nbr[W]->nbr[S] = m_center->nbr[SW];
-		m_center->nbr[W]->nbr[SW] = m_center->nbr[SE];
-		m_center->nbr[W]->nbr[W] = m_center->nbr[E];
-		m_center->nbr[W]->nbr[NW] = m_center->nbr[NE];
-		m_center = m_center->nbr[W];
+			m_center->nbr[NW]->LF[RIGHT] = m_center->nbr[N]->LF[LEFT]; // LF 재사용
+			m_center->nbr[W]->LF[RIGHT] = m_center->LF[LEFT];
+			m_center->nbr[SW]->LF[RIGHT] = m_center->nbr[S]->LF[LEFT];
 
-		// prev center's pinned even memory address goes to null while new center gets it
-		uint8_t* even_fields[4];
-		for (int dir = 0; dir < 4; dir++) {
-			even_fields[dir] = prevCenter->LF[dir]->even_field;
-			prevCenter->LF[dir]->even_field = nullptr;
-		}
-		for (int dir = 0; dir < 4; dir++) {
-			m_center->LF[dir]->even_field = even_fields[dir];
-			if (m_center->LF[dir]->progress == LF_READ_PROGRESS_EVEN_FIELD_PREPARED)
-				m_center->LF[dir]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-		}
+			m_center->nbr[NW]->id = m_center->nbr[N]->id - 56;
+			m_center->nbr[W]->id = m_center->id - 56;
+			m_center->nbr[SW]->id = m_center->nbr[S]->id - 56; // id 업데이트
 
-		m_center->nbr[SW]->id = m_center->nbr[S]->id - 56; // id 업데이트
-		m_center->nbr[W]->id = m_center->id - 56;
-		m_center->nbr[NW]->id = m_center->nbr[N]->id - 56; 
+			int f, r, b, l;
+			find_LF_number_BMW(f, r, b, l, m_center->nbr[SW]->id); // LF number 업데이트
+			m_center->nbr[SW]->LF[FRONT]->LF_number = f;
+			m_center->nbr[SW]->LF[RIGHT]->LF_number = r;
+			m_center->nbr[SW]->LF[BACK]->LF_number = b;
+			m_center->nbr[SW]->LF[LEFT]->LF_number = l;
 
-		int f, r, b, l;
-		find_LF_number_BMW(f, r, b, l, m_center->nbr[SW]->id); // LF number 업데이트
-		m_center->nbr[SW]->LF[FRONT]->LF_number = f;
-		m_center->nbr[SW]->LF[RIGHT]->LF_number = r;
-		m_center->nbr[SW]->LF[BACK]->LF_number = b;
-		m_center->nbr[SW]->LF[LEFT]->LF_number = l;
+			find_LF_number_BMW(f, r, b, l, m_center->nbr[W]->id);
+			m_center->nbr[W]->LF[FRONT]->LF_number = f;
+			m_center->nbr[W]->LF[RIGHT]->LF_number = r;
+			m_center->nbr[W]->LF[BACK]->LF_number = b;
+			m_center->nbr[W]->LF[LEFT]->LF_number = l;
 
-		find_LF_number_BMW(f, r, b, l, m_center->nbr[W]->id);
-		m_center->nbr[W]->LF[FRONT]->LF_number = f;
-		m_center->nbr[W]->LF[RIGHT]->LF_number = r;
-		m_center->nbr[W]->LF[BACK]->LF_number = b;
-		m_center->nbr[W]->LF[LEFT]->LF_number = l;
+			find_LF_number_BMW(f, r, b, l, m_center->nbr[NW]->id);
+			m_center->nbr[NW]->LF[FRONT]->LF_number = f;
+			m_center->nbr[NW]->LF[RIGHT]->LF_number = r;
+			m_center->nbr[NW]->LF[BACK]->LF_number = b;
+			m_center->nbr[NW]->LF[LEFT]->LF_number = l;
+			
+			// prev center's pinned even memory address goes to null while new center gets it
+			uint8_t* even_fields[4];
+			for (int dir = 0; dir < 4; dir++) {
+				even_fields[dir] = prevCenter->LF[dir]->even_field;
+				prevCenter->LF[dir]->even_field = nullptr;
+			}
+			for (int dir = 0; dir < 4; dir++) {
+				m_center->LF[dir]->even_field = even_fields[dir];
+				if (m_center->LF[dir]->progress == LF_READ_PROGRESS_EVEN_FIELD_PREPARED)
+					m_center->LF[dir]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+			}
+		} break;
+		case 1: {
+			printf("[LFU_Window] Window Sliding - Up\n");
+			*state_disk_read_thread = DISK_READ_THREAD_CENTER_LFU_READING;
+			pinned_memory_status = PINNED_LFU_NOT_AVAILABLE;
+			LFU* prevCenter = m_center;
 
-		find_LF_number_BMW(f, r, b, l, m_center->nbr[NW]->id);
-		m_center->nbr[NW]->LF[FRONT]->LF_number = f;
-		m_center->nbr[NW]->LF[RIGHT]->LF_number = r;
-		m_center->nbr[NW]->LF[BACK]->LF_number = b;
-		m_center->nbr[NW]->LF[LEFT]->LF_number = l;
-	} break;
-	case 1: {
-		// up - nbr[N], nbr[NE], nbr[NW] should be replaced
-		printf("[LFU_Window] Window Sliding - Up\n");
-		pinned_memory_status = PINNED_LFU_NOT_AVAILABLE;
-		LFU* prevCenter = m_center;
+			for (int i = 0; i < 4; i++) {
+				m_center->nbr[SW]->LF[i]->progress = LF_READ_PROGRESS_NOT_PREPARED;
+				m_center->nbr[S]->LF[i]->progress = LF_READ_PROGRESS_NOT_PREPARED;
+				m_center->nbr[SE]->LF[i]->progress = LF_READ_PROGRESS_NOT_PREPARED;
+			}
 
-		m_center->nbr[SE]->LF[FRONT] = m_center->nbr[SE]->LF[BACK]; // 버려질 LF[BACK]를 LF[FRONT]에 저장하고
-		m_center->nbr[S]->LF[FRONT] = m_center->nbr[S]->LF[BACK];
-		m_center->nbr[SW]->LF[FRONT] = m_center->nbr[SW]->LF[BACK];
-		m_center->nbr[SE]->LF[FRONT]->progress = LF_READ_PROGRESS_NOT_PREPARED; // LF[FRONT]가 덮어씌워질 수 있게 FLAG 마킹
-		m_center->nbr[S]->LF[FRONT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[SW]->LF[FRONT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[SE]->LF[RIGHT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[S]->LF[RIGHT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[SW]->LF[RIGHT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[SW]->LF[LEFT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
+			m_center->nbr[N]->nbr[N] = m_center->nbr[S];
+			m_center->nbr[N]->nbr[NE] = m_center->nbr[SE];
+			m_center->nbr[N]->nbr[E] = m_center->nbr[NE];
+			m_center->nbr[N]->nbr[SE] = m_center->nbr[E];
+			m_center->nbr[N]->nbr[S] = m_center;
+			m_center->nbr[N]->nbr[SW] = m_center->nbr[W];
+			m_center->nbr[N]->nbr[W] = m_center->nbr[NW];
+			m_center->nbr[N]->nbr[NW] = m_center->nbr[SW];
+			m_center = m_center->nbr[N];
 
-		m_center->nbr[SE]->LF[BACK] = m_center->nbr[NE]->LF[FRONT]; // LF[BACK] 주소값 업데이트
-		m_center->nbr[S]->LF[BACK] = m_center->nbr[N]->LF[FRONT];
-		m_center->nbr[SW]->LF[BACK] = m_center->nbr[NW]->LF[FRONT]; 
+			m_center->nbr[NE]->LF[BACK] = m_center->nbr[E]->LF[FRONT]; // LF 재사용
+			m_center->nbr[N]->LF[BACK] = m_center->LF[FRONT];
+			m_center->nbr[NW]->LF[BACK] = m_center->nbr[W]->LF[FRONT];
 
-		m_center->nbr[N]->nbr[N] = m_center->nbr[S];
-		m_center->nbr[N]->nbr[NE] = m_center->nbr[SE];
-		m_center->nbr[N]->nbr[E] = m_center->nbr[NE];
-		m_center->nbr[N]->nbr[SE] = m_center->nbr[E];
-		m_center->nbr[N]->nbr[S] = m_center;
-		m_center->nbr[N]->nbr[SW] = m_center->nbr[W];
-		m_center->nbr[N]->nbr[W] = m_center->nbr[NW];
-		m_center->nbr[N]->nbr[NW] = m_center->nbr[SW];
-		m_center = m_center->nbr[N];
+			m_center->nbr[NE]->id = m_center->nbr[E]->id + 1;
+			m_center->nbr[N]->id = m_center->id + 1;
+			m_center->nbr[NW]->id = m_center->nbr[W]->id + 1;
 
-		// prev center's pinned even memory address goes to null while new center gets it
-		uint8_t* even_fields[4];
-		for (int dir = 0; dir < 4; dir++) {
-			even_fields[dir] = prevCenter->LF[dir]->even_field;
-			prevCenter->LF[dir]->even_field = nullptr;
-		}
-		for (int dir = 0; dir < 4; dir++) {
-			m_center->LF[dir]->even_field = even_fields[dir];
-			if (m_center->LF[dir]->progress == LF_READ_PROGRESS_EVEN_FIELD_PREPARED)
-				m_center->LF[dir]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-		}
+			int f, r, b, l;
+			find_LF_number_BMW(f, r, b, l, m_center->nbr[N]->id); // LF number 업데이트
+			m_center->nbr[N]->LF[FRONT]->LF_number = f;
+			m_center->nbr[N]->LF[RIGHT]->LF_number = r;
+			m_center->nbr[N]->LF[BACK]->LF_number = b;
+			m_center->nbr[N]->LF[LEFT]->LF_number = l;
 
-		m_center->nbr[N]->id = m_center->id + 1;
-		m_center->nbr[NE]->id = m_center->nbr[E]->id + 1;
-		m_center->nbr[NW]->id = m_center->nbr[W]->id + 1;
+			find_LF_number_BMW(f, r, b, l, m_center->nbr[NE]->id);
+			m_center->nbr[NE]->LF[FRONT]->LF_number = f;
+			m_center->nbr[NE]->LF[RIGHT]->LF_number = r;
+			m_center->nbr[NE]->LF[BACK]->LF_number = b;
+			m_center->nbr[NE]->LF[LEFT]->LF_number = l;
 
-		int f, r, b, l;
-		find_LF_number_BMW(f, r, b, l, m_center->nbr[N]->id); // LF number 업데이트
-		m_center->nbr[N]->LF[FRONT]->LF_number = f;
-		m_center->nbr[N]->LF[RIGHT]->LF_number = r;
-		m_center->nbr[N]->LF[BACK]->LF_number = b;
-		m_center->nbr[N]->LF[LEFT]->LF_number = l;
+			find_LF_number_BMW(f, r, b, l, m_center->nbr[NW]->id);
+			m_center->nbr[NW]->LF[FRONT]->LF_number = f;
+			m_center->nbr[NW]->LF[RIGHT]->LF_number = r;
+			m_center->nbr[NW]->LF[BACK]->LF_number = b;
+			m_center->nbr[NW]->LF[LEFT]->LF_number = l;
 
-		find_LF_number_BMW(f, r, b, l, m_center->nbr[NE]->id);
-		m_center->nbr[NE]->LF[FRONT]->LF_number = f;
-		m_center->nbr[NE]->LF[RIGHT]->LF_number = r;
-		m_center->nbr[NE]->LF[BACK]->LF_number = b;
-		m_center->nbr[NE]->LF[LEFT]->LF_number = l;
+			// prev center's pinned even memory address goes to null while new center gets it
+			uint8_t* even_fields[4];
+			for (int dir = 0; dir < 4; dir++) {
+				even_fields[dir] = prevCenter->LF[dir]->even_field;
+				prevCenter->LF[dir]->even_field = nullptr;
+			}
+			for (int dir = 0; dir < 4; dir++) {
+				m_center->LF[dir]->even_field = even_fields[dir];
+				if (m_center->LF[dir]->progress == LF_READ_PROGRESS_EVEN_FIELD_PREPARED)
+					m_center->LF[dir]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+			}
+		} break;
+		case -1: {
+			printf("[LFU_Window] Window Sliding - Down\n");
+			*state_disk_read_thread = DISK_READ_THREAD_CENTER_LFU_READING;
+			pinned_memory_status = PINNED_LFU_NOT_AVAILABLE;
+			LFU* prevCenter = m_center;
 
-		find_LF_number_BMW(f, r, b, l, m_center->nbr[NW]->id);
-		m_center->nbr[NW]->LF[FRONT]->LF_number = f;
-		m_center->nbr[NW]->LF[RIGHT]->LF_number = r;
-		m_center->nbr[NW]->LF[BACK]->LF_number = b;
-		m_center->nbr[NW]->LF[LEFT]->LF_number = l;
-	} break;
-	case -1: {
-		// down - nbr[SE], nbr[S], nbr[SW] should be replaced
-		printf("[LFU_Window] Window Sliding - Down\n");
-		pinned_memory_status = PINNED_LFU_NOT_AVAILABLE;
-		LFU* prevCenter = m_center;
+			for (int i = 0; i < 4; i++) {
+				m_center->nbr[NW]->LF[i]->progress = LF_READ_PROGRESS_NOT_PREPARED;
+				m_center->nbr[N]->LF[i]->progress = LF_READ_PROGRESS_NOT_PREPARED;
+				m_center->nbr[NE]->LF[i]->progress = LF_READ_PROGRESS_NOT_PREPARED;
+			}
 
-		m_center->nbr[NW]->LF[BACK] = m_center->nbr[NW]->LF[FRONT];
-		m_center->nbr[N]->LF[BACK] = m_center->nbr[N]->LF[FRONT];
-		m_center->nbr[NE]->LF[BACK] = m_center->nbr[NE]->LF[FRONT]; // 버려질 LF[FRONT]를 LF[BACK]에 저장하고
-		m_center->nbr[NE]->LF[BACK]->progress = LF_READ_PROGRESS_NOT_PREPARED; // LF[BACK]가 덮어씌워질 수 있게 FLAG 마킹
-		m_center->nbr[N]->LF[BACK]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[NW]->LF[BACK]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[NE]->LF[RIGHT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[N]->LF[RIGHT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[NW]->LF[RIGHT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
-		m_center->nbr[NW]->LF[LEFT]->progress = LF_READ_PROGRESS_NOT_PREPARED;
+			m_center->nbr[S]->nbr[N] = m_center;
+			m_center->nbr[S]->nbr[NE] = m_center->nbr[E];
+			m_center->nbr[S]->nbr[E] = m_center->nbr[SE];
+			m_center->nbr[S]->nbr[SE] = m_center->nbr[NE];
+			m_center->nbr[S]->nbr[S] = m_center->nbr[N];
+			m_center->nbr[S]->nbr[SW] = m_center->nbr[NW];
+			m_center->nbr[S]->nbr[W] = m_center->nbr[SW];
+			m_center->nbr[S]->nbr[NW] = m_center->nbr[W];
+			m_center = m_center->nbr[S];
 
-		m_center->nbr[NW]->LF[FRONT] = m_center->nbr[SW]->LF[BACK]; // LF[FRONT] 주소값 업데이트
-		m_center->nbr[N]->LF[FRONT] = m_center->nbr[S]->LF[BACK];
-		m_center->nbr[NE]->LF[FRONT] = m_center->nbr[SE]->LF[BACK];
+			m_center->nbr[SE]->LF[FRONT] = m_center->nbr[E]->LF[BACK]; // LF 재사용
+			m_center->nbr[S]->LF[FRONT] = m_center->LF[BACK];
+			m_center->nbr[SW]->LF[FRONT] = m_center->nbr[W]->LF[BACK];
 
-		m_center->nbr[S]->nbr[N] = m_center;
-		m_center->nbr[S]->nbr[NE] = m_center->nbr[E];
-		m_center->nbr[S]->nbr[E] = m_center->nbr[SE];
-		m_center->nbr[S]->nbr[SE] = m_center->nbr[NE];
-		m_center->nbr[S]->nbr[S] = m_center->nbr[N];
-		m_center->nbr[S]->nbr[SW] = m_center->nbr[NW];
-		m_center->nbr[S]->nbr[W] = m_center->nbr[SW];
-		m_center->nbr[S]->nbr[NW] = m_center->nbr[W];
-		m_center = m_center->nbr[S];
+			m_center->nbr[NE]->id = m_center->nbr[E]->id + 1;
+			m_center->nbr[N]->id = m_center->id + 1;
+			m_center->nbr[NW]->id = m_center->nbr[W]->id + 1;
 
-		// prev center's pinned even memory address goes to null while new center gets it
-		uint8_t* even_fields[4];
-		for (int dir = 0; dir < 4; dir++) {
-			even_fields[dir] = prevCenter->LF[dir]->even_field;
-			prevCenter->LF[dir]->even_field = nullptr;
-		}
-		for (int dir = 0; dir < 4; dir++) {
-			m_center->LF[dir]->even_field = even_fields[dir];
-			if (m_center->LF[dir]->progress == LF_READ_PROGRESS_EVEN_FIELD_PREPARED)
-				m_center->LF[dir]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-		}
+			m_center->nbr[SW]->id = m_center->nbr[W]->id - 1;
+			m_center->nbr[S]->id = m_center->id - 1;
+			m_center->nbr[SE]->id = m_center->nbr[E]->id - 1;
 
-		m_center->nbr[SW]->id = m_center->nbr[W]->id - 1;
-		m_center->nbr[S]->id = m_center->id - 1;
-		m_center->nbr[SE]->id = m_center->nbr[E]->id - 1;
+			int f, r, b, l;
+			find_LF_number_BMW(f, r, b, l, m_center->nbr[SW]->id); // LF number 업데이트
+			m_center->nbr[SW]->LF[FRONT]->LF_number = f;
+			m_center->nbr[SW]->LF[RIGHT]->LF_number = r;
+			m_center->nbr[SW]->LF[BACK]->LF_number = b;
+			m_center->nbr[SW]->LF[LEFT]->LF_number = l;
 
-		int f, r, b, l;
-		find_LF_number_BMW(f, r, b, l, m_center->nbr[SW]->id); // LF number 업데이트
-		m_center->nbr[SW]->LF[FRONT]->LF_number = f;
-		m_center->nbr[SW]->LF[RIGHT]->LF_number = r;
-		m_center->nbr[SW]->LF[BACK]->LF_number = b;
-		m_center->nbr[SW]->LF[LEFT]->LF_number = l;
+			find_LF_number_BMW(f, r, b, l, m_center->nbr[S]->id);
+			m_center->nbr[S]->LF[FRONT]->LF_number = f;
+			m_center->nbr[S]->LF[RIGHT]->LF_number = r;
+			m_center->nbr[S]->LF[BACK]->LF_number = b;
+			m_center->nbr[S]->LF[LEFT]->LF_number = l;
 
-		find_LF_number_BMW(f, r, b, l, m_center->nbr[S]->id);
-		m_center->nbr[S]->LF[FRONT]->LF_number = f;
-		m_center->nbr[S]->LF[RIGHT]->LF_number = r;
-		m_center->nbr[S]->LF[BACK]->LF_number = b;
-		m_center->nbr[S]->LF[LEFT]->LF_number = l;
+			find_LF_number_BMW(f, r, b, l, m_center->nbr[SE]->id);
+			m_center->nbr[SE]->LF[FRONT]->LF_number = f;
+			m_center->nbr[SE]->LF[RIGHT]->LF_number = r;
+			m_center->nbr[SE]->LF[BACK]->LF_number = b;
+			m_center->nbr[SE]->LF[LEFT]->LF_number = l;
 
-		find_LF_number_BMW(f, r, b, l, m_center->nbr[SE]->id);
-		m_center->nbr[SE]->LF[FRONT]->LF_number = f;
-		m_center->nbr[SE]->LF[RIGHT]->LF_number = r;
-		m_center->nbr[SE]->LF[BACK]->LF_number = b;
-		m_center->nbr[SE]->LF[LEFT]->LF_number = l;
-	} break;
-	}
-
-	// black lines (center)
-	for (int dir = 0; dir < 4; dir++) {
-		if (m_center->LF[dir]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-			read_uint8(m_center->LF[dir]->odd_field, BMW_LF[m_center->id][dir], ODD);
-			m_center->LF[dir]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+			// prev center's pinned even memory address goes to null while new center gets it
+			uint8_t* even_fields[4];
+			for (int dir = 0; dir < 4; dir++) {
+				even_fields[dir] = prevCenter->LF[dir]->even_field;
+				prevCenter->LF[dir]->even_field = nullptr;
+			}
+			for (int dir = 0; dir < 4; dir++) {
+				m_center->LF[dir]->even_field = even_fields[dir];
+				if (m_center->LF[dir]->progress == LF_READ_PROGRESS_EVEN_FIELD_PREPARED)
+					m_center->LF[dir]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+			}
+		} break;
 		}
 
+		// black lines (center)
+		if (m_center->LF[FRONT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if(read_uint8(m_center->LF[FRONT]->odd_field, BMW_LF[m_center->id][FRONT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->LF[FRONT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->LF[RIGHT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->LF[RIGHT]->odd_field, BMW_LF[m_center->id][RIGHT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->LF[RIGHT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->LF[BACK]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->LF[BACK]->odd_field, BMW_LF[m_center->id][BACK], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->LF[BACK]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->LF[LEFT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->LF[LEFT]->odd_field, BMW_LF[m_center->id][LEFT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->LF[LEFT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		*state_disk_read_thread = DISK_READ_THREAD_CENTER_LFU_READ_COMPLETE;
 		if (pinned_memory_status == PINNED_LFU_NOT_AVAILABLE) {
-			memcpy(m_pinnedLFU[ODD][dir], m_center->LF[dir]->odd_field, light_field_size);
+			memcpy(m_pinnedLFU[ODD][FRONT], m_center->LF[FRONT]->odd_field, light_field_size);
+			memcpy(m_pinnedLFU[ODD][RIGHT], m_center->LF[RIGHT]->odd_field, light_field_size);
+			memcpy(m_pinnedLFU[ODD][BACK], m_center->LF[BACK]->odd_field, light_field_size);
+			memcpy(m_pinnedLFU[ODD][LEFT], m_center->LF[LEFT]->odd_field, light_field_size);
 		}
-		if (dir == 3) {
-			pinned_memory_status = PINNED_LFU_ODD_AVAILABLE;
+		pinned_memory_status = PINNED_LFU_ODD_AVAILABLE;
+
+		for (int dir = 0; dir < 4; dir++) {
+			if (m_center->LF[dir]->progress < LF_READ_PROGRESS_EVEN_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+				if (read_uint8(m_center->LF[dir]->even_field, BMW_LF[m_center->id][dir], EVEN, curPosX, curPosY) < 0) return -1;
+				m_center->LF[dir]->progress = LF_READ_PROGRESS_EVEN_FIELD_PREPARED;
+			}
+			if (dir == 3) {
+				pinned_memory_status = PINNED_LFU_EVEN_AVAILABLE;
+			}
 		}
-	}
-
-	for (int dir = 0; dir < 4; dir++) {
-		if (m_center->LF[dir]->progress < LF_READ_PROGRESS_EVEN_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-			read_uint8(m_center->LF[dir]->even_field, BMW_LF[m_center->id][dir], EVEN);
-			m_center->LF[dir]->progress = LF_READ_PROGRESS_EVEN_FIELD_PREPARED;
+		*state_disk_read_thread = DISK_READ_THREAD_NEIGHBOR_LFU_READING;
+		// green lines
+		if (m_center->nbr[N]->LF[LEFT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[N]->LF[LEFT]->odd_field, BMW_LF[m_center->nbr[N]->id][LEFT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[N]->LF[LEFT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
 		}
-		if (dir == 3) {
-			pinned_memory_status = PINNED_LFU_EVEN_AVAILABLE;
+		if (m_center->nbr[N]->LF[RIGHT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[N]->LF[RIGHT]->odd_field, BMW_LF[m_center->nbr[N]->id][RIGHT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[N]->LF[RIGHT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
 		}
-	}
+		if (m_center->nbr[S]->LF[LEFT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[S]->LF[LEFT]->odd_field, BMW_LF[m_center->nbr[S]->id][LEFT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[S]->LF[LEFT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->nbr[S]->LF[RIGHT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[S]->LF[RIGHT]->odd_field, BMW_LF[m_center->nbr[S]->id][RIGHT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[S]->LF[RIGHT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->nbr[E]->LF[FRONT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[E]->LF[FRONT]->odd_field, BMW_LF[m_center->nbr[E]->id][FRONT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[E]->LF[FRONT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->nbr[E]->LF[BACK]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[E]->LF[BACK]->odd_field, BMW_LF[m_center->nbr[E]->id][BACK], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[E]->LF[BACK]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->nbr[W]->LF[FRONT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[W]->LF[FRONT]->odd_field, BMW_LF[m_center->nbr[W]->id][FRONT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[W]->LF[FRONT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->nbr[W]->LF[BACK]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[W]->LF[BACK]->odd_field, BMW_LF[m_center->nbr[W]->id][BACK], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[W]->LF[BACK]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
 
-	// green lines
-	if(m_center->nbr[N]->LF[LEFT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED){
-		read_uint8(m_center->nbr[N]->LF[LEFT]->odd_field, BMW_LF[m_center->nbr[N]->id][LEFT], ODD);
-		m_center->nbr[N]->LF[LEFT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[N]->LF[RIGHT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[N]->LF[RIGHT]->odd_field, BMW_LF[m_center->nbr[N]->id][RIGHT], ODD);
-		m_center->nbr[N]->LF[RIGHT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[S]->LF[LEFT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[S]->LF[LEFT]->odd_field, BMW_LF[m_center->nbr[S]->id][LEFT], ODD);
-		m_center->nbr[S]->LF[LEFT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[S]->LF[RIGHT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[S]->LF[RIGHT]->odd_field, BMW_LF[m_center->nbr[S]->id][RIGHT], ODD);
-		m_center->nbr[S]->LF[RIGHT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[E]->LF[FRONT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[E]->LF[FRONT]->odd_field, BMW_LF[m_center->nbr[E]->id][FRONT], ODD);
-		m_center->nbr[E]->LF[FRONT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[E]->LF[BACK]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[E]->LF[BACK]->odd_field, BMW_LF[m_center->nbr[E]->id][BACK], ODD);
-		m_center->nbr[E]->LF[BACK]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[W]->LF[FRONT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[W]->LF[FRONT]->odd_field, BMW_LF[m_center->nbr[W]->id][FRONT], ODD);
-		m_center->nbr[W]->LF[FRONT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[W]->LF[BACK]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[W]->LF[BACK]->odd_field, BMW_LF[m_center->nbr[W]->id][BACK], ODD);
-		m_center->nbr[W]->LF[BACK]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
+		// red lines
+		if (m_center->nbr[N]->LF[FRONT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[N]->LF[FRONT]->odd_field, BMW_LF[m_center->nbr[N]->id][FRONT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[N]->LF[FRONT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->nbr[E]->LF[RIGHT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[E]->LF[RIGHT]->odd_field, BMW_LF[m_center->nbr[E]->id][RIGHT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[E]->LF[RIGHT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->nbr[S]->LF[BACK]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[S]->LF[BACK]->odd_field, BMW_LF[m_center->nbr[S]->id][BACK], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[S]->LF[BACK]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->nbr[W]->LF[LEFT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[W]->LF[LEFT]->odd_field, BMW_LF[m_center->nbr[W]->id][LEFT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[W]->LF[LEFT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
 
-	// red lines
-	if (m_center->nbr[N]->LF[FRONT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[N]->LF[FRONT]->odd_field, BMW_LF[m_center->nbr[N]->id][FRONT], ODD);
-		m_center->nbr[N]->LF[FRONT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[E]->LF[RIGHT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[E]->LF[RIGHT]->odd_field, BMW_LF[m_center->nbr[E]->id][RIGHT], ODD);
-		m_center->nbr[E]->LF[RIGHT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[S]->LF[BACK]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[S]->LF[BACK]->odd_field, BMW_LF[m_center->nbr[S]->id][BACK], ODD);
-		m_center->nbr[S]->LF[BACK]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[W]->LF[LEFT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[W]->LF[LEFT]->odd_field, BMW_LF[m_center->nbr[W]->id][LEFT], ODD);
-		m_center->nbr[W]->LF[LEFT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
+		// blue lines
+		if (m_center->nbr[NE]->LF[FRONT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[NE]->LF[FRONT]->odd_field, BMW_LF[m_center->nbr[NE]->id][FRONT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[NE]->LF[FRONT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->nbr[SE]->LF[BACK]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[SE]->LF[BACK]->odd_field, BMW_LF[m_center->nbr[SE]->id][BACK], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[SE]->LF[BACK]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->nbr[SW]->LF[BACK]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[SW]->LF[BACK]->odd_field, BMW_LF[m_center->nbr[SW]->id][BACK], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[SW]->LF[BACK]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->nbr[NW]->LF[FRONT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[NW]->LF[FRONT]->odd_field, BMW_LF[m_center->nbr[NW]->id][FRONT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[NW]->LF[FRONT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->nbr[NE]->LF[RIGHT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[NE]->LF[RIGHT]->odd_field, BMW_LF[m_center->nbr[NE]->id][RIGHT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[NE]->LF[RIGHT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->nbr[SE]->LF[RIGHT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[SE]->LF[RIGHT]->odd_field, BMW_LF[m_center->nbr[SE]->id][RIGHT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[SE]->LF[RIGHT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->nbr[SW]->LF[LEFT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[SW]->LF[LEFT]->odd_field, BMW_LF[m_center->nbr[SW]->id][LEFT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[SW]->LF[LEFT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
+		if (m_center->nbr[NW]->LF[LEFT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
+			if (read_uint8(m_center->nbr[NW]->LF[LEFT]->odd_field, BMW_LF[m_center->nbr[NW]->id][LEFT], ODD, curPosX, curPosY) < 0) return -1;
+			m_center->nbr[NW]->LF[LEFT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		}
 
-	// blue lines
-	if (m_center->nbr[NE]->LF[FRONT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[NE]->LF[FRONT]->odd_field, BMW_LF[m_center->nbr[NE]->id][FRONT], ODD);
-		m_center->nbr[NE]->LF[FRONT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
+		*state_disk_read_thread = DISK_READ_THREAD_NEIGHBOR_LFU_READ_COMPLETE;
+		printf("window update done\n");
 	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[SE]->LF[BACK]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[SE]->LF[BACK]->odd_field, BMW_LF[m_center->nbr[SE]->id][BACK], ODD);
-		m_center->nbr[SE]->LF[BACK]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[SW]->LF[BACK]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[SW]->LF[BACK]->odd_field, BMW_LF[m_center->nbr[SW]->id][BACK], ODD);
-		m_center->nbr[SW]->LF[BACK]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[NW]->LF[FRONT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[NW]->LF[FRONT]->odd_field, BMW_LF[m_center->nbr[NW]->id][FRONT], ODD);
-		m_center->nbr[NW]->LF[FRONT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-
-	if (m_center->nbr[NE]->LF[RIGHT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[NE]->LF[RIGHT]->odd_field, BMW_LF[m_center->nbr[NE]->id][RIGHT], ODD);
-		m_center->nbr[NE]->LF[RIGHT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[SE]->LF[RIGHT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[SE]->LF[RIGHT]->odd_field, BMW_LF[m_center->nbr[SE]->id][RIGHT], ODD);
-		m_center->nbr[SE]->LF[RIGHT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[SW]->LF[LEFT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[SW]->LF[LEFT]->odd_field, BMW_LF[m_center->nbr[SW]->id][LEFT], ODD);
-		m_center->nbr[SW]->LF[LEFT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
-	if (m_center->nbr[NW]->LF[LEFT]->progress < LF_READ_PROGRESS_ODD_FIELD_PREPARED && main_thread_state != MAIN_THREAD_TERMINATED) {
-		read_uint8(m_center->nbr[NW]->LF[LEFT]->odd_field, BMW_LF[m_center->nbr[NW]->id][LEFT], ODD);
-		m_center->nbr[NW]->LF[LEFT]->progress = LF_READ_PROGRESS_ODD_FIELD_PREPARED;
-	}
-	if (curLFUID != getLFUID(curPosX, curPosY))
-		return -1; // Interrupt
 
 	return 0;
 }
 
-int LFU_Window::read_uint8(uint8_t* buf, std::string filename, const INTERLACE_FIELD& field, int size) {
+int LFU_Window::read_uint8(uint8_t* buf, std::string filename, const INTERLACE_FIELD& field, const int& curPosX, const int& curPosY, int size) {
 	int fd;
 	int ret;
 	filename = LF_prefix + filename;
@@ -691,7 +650,6 @@ int LFU_Window::read_uint8(uint8_t* buf, std::string filename, const INTERLACE_F
 		assert(ret == 0);
 		exit(1);
 	}
-
 	if (size < 0) {
 		if ((ret = lseek(fd, 0, SEEK_END)) < 0) {
 			printf("SEEK_END failed, %s\n", filename.c_str());
@@ -710,8 +668,18 @@ int LFU_Window::read_uint8(uint8_t* buf, std::string filename, const INTERLACE_F
 			exit(1);
 		}
 	}
-
-	ret = read(fd, buf, sizeof(uint8_t) * size); // x64
+	const int num_chunk = 50;
+	const int chunk_size = size / num_chunk;
+	int next_chunk_begin = 0;
+	for (int i = 0; i < num_chunk; i++) {
+		if (curLFUID != getLFUID(curPosX, curPosY)) {
+			*state_disk_read_thread = DISK_READ_THREAD_CENTER_LFU_READING;
+			printf("LF read break\n");
+			return -1; // Interrupt
+		}
+		ret += read(fd, buf + next_chunk_begin, sizeof(uint8_t) * chunk_size); // x64
+		next_chunk_begin += chunk_size;
+	}
 	close(fd);
 
 	if (ret != size) {

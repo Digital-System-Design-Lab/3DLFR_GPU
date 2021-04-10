@@ -24,19 +24,21 @@ struct Slice
 
 class LRU_Cache {
 public:
-	LRU_Cache(const size_t& num_limit_HashingLF, const size_t& num_limit_slice, IO_Config* config);
+	LRU_Cache(const size_t& num_limit_HashingLF, const size_t& num_limit_slice, IO_Config* config, H2D_THREAD_STATE* h2d_thread_state);
 	~LRU_Cache();
 
 	int query_hashmap(const SliceID& id, const INTERLACE_FIELD& field);
 	void enqueue_wait_slice(SliceID id, uint8_t* data, const INTERLACE_FIELD& field);
 
 	int put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& field);
-	void put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_THREAD_STATE& p_h2d_thread_state, const INTERLACE_FIELD& field); // for Worker thread
+	void put(const SliceID& id, uint8_t* data, cudaStream_t stream, const INTERLACE_FIELD& field); // for Worker thread
 
 	int synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream);
 	int size(const INTERLACE_FIELD& field);
 
 	bool isFull(const INTERLACE_FIELD& field);
+
+	uint8_t* find_slice_in_hashmap(SliceID id);
 
 	Slice** hashmap_odd;
 	uint8_t** h_devPtr_hashmap_odd;
@@ -65,5 +67,7 @@ private:
 	DeviceMemoryManager* dmm_even;
 
 	IO_Config* io_config;
+
+	H2D_THREAD_STATE* state_h2d_thread;
 };
 #endif

@@ -4,7 +4,6 @@
 
 int getKeywithCV(int& posX, int& posY)
 {
-	printf("%d, %d -> ", posX, posY);
 	int c = cvWaitKey(0);
 
 		switch (c)
@@ -24,20 +23,19 @@ int getKeywithCV(int& posX, int& posY)
 	posX = clamp(posX, 101, 499);
 	posY = clamp(posY, 101, 5499);
 
-	printf("%d, %d\n", posX, posY);
-
 	return 0;
 }
 
 int main()
 {
-	int curPosX = 193;
-	int curPosY = 199;
+	int curPosX = 201;
+	int curPosY = 201;
 
 	std::string PixelRange = "S:/PixelRange_CUDA/";
 	std::string LF = "S:/BMW_4K/";
 
-	LF_Renderer renderer(PixelRange, LF, curPosX, curPosY, false);
+	// LF_Renderer renderer(PixelRange, LF, curPosX, curPosY, false);
+	LF_Renderer renderer(PixelRange, LF, curPosX, curPosY);
 
 	cv::Mat img = cv::Mat(2048, 9000, CV_8UC3);
 	cv::namedWindow("window", CV_WINDOW_NORMAL);

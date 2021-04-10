@@ -1,7 +1,9 @@
 #include "LRU_Cache.h"
 
-LRU_Cache::LRU_Cache(const size_t& num_limit_HashingLF, const size_t& num_limit_slice, IO_Config* config)
+LRU_Cache::LRU_Cache(const size_t& num_limit_HashingLF, const size_t& num_limit_slice, IO_Config* config, H2D_THREAD_STATE* h2d_thread_state)
 {
+	this->state_h2d_thread = h2d_thread_state;
+
 	this->io_config = config;
 	this->head_odd = nullptr;
 	this->tail_odd = nullptr;
@@ -188,7 +190,7 @@ int LRU_Cache::put(const SliceID& id, uint8_t* data, const INTERLACE_FIELD& fiel
 	}
 }
 
-void LRU_Cache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_THREAD_STATE& p_h2d_thread_state, const INTERLACE_FIELD& field)
+void LRU_Cache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, const INTERLACE_FIELD& field)
 {
 	Slice** hashmap;
 	uint8_t** h_devPtr_hashmap;
@@ -256,12 +258,12 @@ void LRU_Cache::put(const SliceID& id, uint8_t* data, cudaStream_t stream, H2D_T
 		hashmap[get_hashmap_location(slice->id)] = slice;
 		uint8_t* d_slice = dmm->get_empty_space(slice->access_number);
 		cudaError_t err = cudaMemcpyAsync(d_slice, data, io_config->slice_size, cudaMemcpyHostToDevice, stream); // data 복사
-		p_h2d_thread_state = H2D_THREAD_RUNNING;
+		*state_h2d_thread = H2D_THREAD_RUNNING;
 		cudaStreamSynchronize(stream); // this stream must block the host code
 		h_devPtr_hashmap[get_hashmap_location(slice->id)] = d_slice; // hashmap에 저장된 주소공간을 할당 후
 
 		(*current_LRU_size)++;
-		p_h2d_thread_state = H2D_THREAD_WAIT;
+		*state_h2d_thread = H2D_THREAD_WAIT;
 	}
 	else {
 		// Cache hit 
@@ -289,12 +291,6 @@ int LRU_Cache::synchronize_HashmapOfPtr(LFU_Window& window, cudaStream_t stream)
 		uint8_t* data = waiting_slice_odd.front().second;
 		put(id, data, ODD);
 		waiting_slice_odd.pop();
-		/*
-		if (window.pinned_memory_status > PINNED_LFU_NOT_AVAILABLE) {
-			put(id, data, ODD);
-			waiting_slice_odd.pop();
-		}
-		*/
 	}
 	cudaError_t err = cudaMemcpyAsync(d_devPtr_hashmap_odd, h_devPtr_hashmap_odd, io_config->LF_width / io_config->slice_width * io_config->LF_length * num_limit_HashingLF * sizeof(uint8_t*), cudaMemcpyHostToDevice, stream);
 	assert(err == cudaSuccess);
@@ -345,4 +341,10 @@ bool LRU_Cache::isFull(const INTERLACE_FIELD& field)
 			return false;
 		else return true;
 	}
+}
+
+uint8_t* LRU_Cache::find_slice_in_hashmap(SliceID id)
+{
+	if (h_devPtr_hashmap_odd[get_hashmap_location(id)] == nullptr) return nullptr;
+	else return h_devPtr_hashmap_odd[get_hashmap_location(id)];
 }
