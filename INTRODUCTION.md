@@ -23,10 +23,10 @@
   ***Slice*** is a group of pixel columns, is used as a unit of data movement and storage. The slice is made by dividing each image vertically as shown below.
 
   The advantage of transmitting in slice units is that transmission overhead can be prevented by transmitting the data portion for view synthesis.
-
-<img src="https://user-images.githubusercontent.com/74892010/114294550-7c117900-9ada-11eb-8377-33c3a16264e0.png" alt="image" style="zoom:50%;" />
-
-+ ## Datapath
+  
+  <img src="https://user-images.githubusercontent.com/74892010/114294550-7c117900-9ada-11eb-8377-33c3a16264e0.png" alt="image" style="zoom:50%;" />
+  
+- ## Datapath
 
   (1) When the user’s current viewpoint is entered into the system, the ***slice manager*** calculates the range and amount of LF data required to synthesis the corresponding view and checks if there is any data already loaded into the ***device memory***.
 
@@ -36,7 +36,7 @@
 
   (4) It may not be possible to store all required LF data in ***host memory***. Therefore, while performing view synthesis, at the same time, LF data required by neighboring viewpoints is transferred from ***storage*** to ***host memory***.
 
-<img src="https://user-images.githubusercontent.com/74892010/114294559-8d5a8580-9ada-11eb-8a06-265e119b916e.png" alt="image" style="zoom:50%;" />
+  <img src="https://user-images.githubusercontent.com/74892010/114294559-8d5a8580-9ada-11eb-8a06-265e119b916e.png" alt="image" style="zoom:50%;" />
 
 
 
@@ -63,5 +63,5 @@
     ![image](https://user-images.githubusercontent.com/74892010/114294616-dd394c80-9ada-11eb-98e8-df213d393052.png)
 
   - The flow chart shows the progressive LF update using the interlaced LF format. When the current LFU in the center is changed by the viewpoint movement, the LFU window slides to determine what data needs to be read from the storage(1).This includes even (or odd) fields that can make views of the current LFU complete and odd (or even) fields for new neighboring LFUs. While GPU rendering is being performed, even fields of the current LFU are read first. (2) to quickly change the rendered view from the current viewpoint to high quality. If the LF data of the full view for the current LFU is not yet prepared, the half resolution view from the odd fields is synthesized. At the same time, even fields are read continuously (3). When the reading of the even fields for the current LFU is finished, the full resolution view is now synthesized and the odd field of the neighboring LFU is read in the background. (4). 
-
-<img src="https://user-images.githubusercontent.com/74892010/114294631-e88c7800-9ada-11eb-99a5-e49dc45e58a9.png" alt="image" style="zoom:50%;" />
+  
+  <img src="https://user-images.githubusercontent.com/74892010/114294631-e88c7800-9ada-11eb-99a5-e49dc45e58a9.png" alt="image" style="zoom:50%;" />

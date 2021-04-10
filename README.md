@@ -17,7 +17,7 @@ Dependencies : CUDA 11.2, GLEW, freeglut
     Information on pixels required at a location inside the LFU.  (Which image from which column to get the pixels) 
     You can choose between two resolutions: 4096x2048 and 7680x4320.
   - **Map configuration_BMW driving center_Incheon_Korea.xlsx** 
-    Index information of the light field data constituting the virtual space of 600x5600 cm<sup>2</sup>. We acquired light field data at the "BMW Driving Center" in Incheon, Korea.
+    Index information of the light field data constituting the virtual space of 600x5600 cm<sup>2</sup>. 
 
 - **sources**
   source code of this. You can run the program just by setting the resolution in the following block of code, setting the path to the LF data and the path containing the pixel_selection file.
