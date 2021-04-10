@@ -24,21 +24,22 @@ Dependencies : CUDA 11.2, GLEW, freeglut
 
 - **sources**
   
-source code of this. You can run the program just by setting the resolution in the following block of code, setting the path to the LF data and the path containing the pixel_selection file.
+  source code of this. You can run the program just by setting the resolution in the following block of code, setting the path to the LF data and the path containing the pixel_selection file.
   
   ```c++
-  #define RESOLUTION 4
-  ...
-  #define PATH_LF "S:/BMW_4K/"
-  #define PATH_PIXEL_RANGE "S:/PixelRange_4K/"
-```
-  
-***NOTE:*** The last argument among the constructors of the `LF_Renderer` class determines whether to use the LFU window mode or explore only inside a single LFU. 
-  
-  ```c++
-  LF_Renderer renderer(PATH_LF, PATH_PIXEL_RANGE, WIDTH, HEIGHT, LF_length, num_LFs, dpp, stride, curPosX, curPosY, true);
+    #define RESOLUTION 4
+    ...
+    #define PATH_LF "S:/BMW_4K/"
+    #define PATH_PIXEL_RANGE "S:/PixelRange_4K/"
   ```
   
+  ***NOTE:*** The last argument among the constructors of the `LF_Renderer` class determines whether to use the LFU window mode or explore only inside a single LFU. 
   
-  
-- **lib/bin** : libs and dlls for glew and freeglut.
+  ```c++
+    LF_Renderer renderer(PATH_LF, PATH_PIXEL_RANGE, WIDTH, HEIGHT, LF_length, num_LFs, dpp, stride, curPosX, curPosY, true);
+  ```
+
+- **lib/bin**
+
+  libs and dlls for glew and freeglut.
+
